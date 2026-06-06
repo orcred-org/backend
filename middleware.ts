@@ -21,6 +21,7 @@ export async function middleware(req: NextRequest) {
     "/api/v1/auth/magic-link",
     "/api/v1/auth/callback",
     "/api/v1/auth/signup",
+    "/api/v1/auth/me",
     "/api/v1/verify",
     "/api/v1/generator/generate", // public generator (rate limited separately)
   ];
