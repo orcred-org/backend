@@ -30,8 +30,9 @@ export async function PUT(
   const supabase = createServiceClient();
 
   if (parsed.data.action === "terminate") {
-    // Disable Supabase Auth user entirely
-    await supabase.auth.admin.updateUserById(id, { ban_duration: "876600h" }); // 100 years
+    // Disable Supabase Auth user entirely (ban for 100 years)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await (supabase.auth.admin as any).updateUserById(id, { ban_duration: "876600h" });
   }
 
   // Log action in user record (could extend schema with a status field)
