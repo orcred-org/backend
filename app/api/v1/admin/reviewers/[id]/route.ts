@@ -31,7 +31,7 @@ export async function PUT(
 
   if (parsed.data.action === "terminate") {
     // Disable Supabase Auth user entirely
-    await supabase.auth.admin.updateUser(id, { ban_duration: "876600h" }); // 100 years
+    await supabase.auth.admin.updateUserById(id, { ban_duration: "876600h" }); // 100 years
   }
 
   // Log action in user record (could extend schema with a status field)
