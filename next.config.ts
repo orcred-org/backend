@@ -7,7 +7,7 @@ const nextConfig: NextConfig = {
       headers: [
         {
           key: "Access-Control-Allow-Origin",
-          value: "http://localhost:3001",
+          value: "https://app.orcred.com",
         },
         {
           key: "Access-Control-Allow-Methods",
