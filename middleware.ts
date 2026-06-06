@@ -1,9 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
+const ALLOWED_ORIGINS = [
+  "http://localhost:3000",
+  "http://localhost:3001",
+  "https://app.orcred.com",
+  "https://orcred.com",
+];
+
 export async function middleware(req: NextRequest) {
   const res = NextResponse.next();
   const { pathname } = req.nextUrl;
+
+  // Dynamic CORS — reflect origin back if it's on the allowlist
+  const origin = req.headers.get("origin") ?? "";
+  if (ALLOWED_ORIGINS.includes(origin)) {
+    res.headers.set("Access-Control-Allow-Origin", origin);
+    res.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+    res.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, Cookie");
+    res.headers.set("Access-Control-Allow-Credentials", "true");
+  }
+  // Handle preflight
+  if (req.method === "OPTIONS") {
+    return new NextResponse(null, { status: 204, headers: res.headers });
+  }
 
   // Admin IP allowlist
   if (pathname.startsWith("/api/v1/admin") || pathname.startsWith("/dashboard/admin")) {
