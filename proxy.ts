@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 const ALLOWED_ORIGINS = [
   "http://localhost:3000",
   "http://localhost:3001",
+  "http://localhost:3002",
+  "http://localhost:3003",
   "https://app.orcred.com",
   "https://orcred.com",
 ];
@@ -43,14 +46,40 @@ export async function proxy(req: NextRequest) {
     "/api/v1/auth/signup",
     "/api/v1/auth/me",
     "/api/v1/verify",
-    "/api/v1/generator/generate", // public generator (rate limited separately)
+    "/api/v1/applications/submit", // public get-verified form submission
+    "/api/v1/generator/generate",  // public generator (rate limited separately)
   ];
 
   if (publicRoutes.some(r => pathname.startsWith(r))) {
     return res;
   }
 
-  // Validate session for all other routes
+  // ------------------------------------------------------------------
+  // Validate session — accept either Bearer token OR Supabase cookies
+  // ------------------------------------------------------------------
+
+  // 1. Check Bearer token first (frontend sends this after PKCE auth)
+  const authHeader = req.headers.get("authorization") ?? "";
+  const bearerToken = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
+  if (bearerToken) {
+    const adminClient = createSupabaseClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    const { data, error } = await adminClient.auth.getUser(bearerToken);
+    if (!error && data.user) {
+      // Valid Bearer token — let through
+      return res;
+    }
+    // Invalid token — fall through to return 401 below
+    if (pathname.startsWith("/api/")) {
+      return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+    }
+    return NextResponse.redirect(new URL("/dashboard/auth", req.url));
+  }
+
+  // 2. Fall back to cookie-based session
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -77,7 +106,7 @@ export async function proxy(req: NextRequest) {
     if (pathname.startsWith("/api/")) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
     }
-    return NextResponse.redirect(new URL("/auth/login", req.url));
+    return NextResponse.redirect(new URL("/dashboard/auth", req.url));
   }
 
   return res;

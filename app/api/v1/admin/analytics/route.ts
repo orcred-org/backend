@@ -18,55 +18,61 @@ export async function GET(req: NextRequest) {
   const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString();
 
   const [
+    appsAll,
     appsThisMonth,
     appsLastMonth,
     scoresAll,
-    scoresThisMonth,
     credentialsAll,
     linkedinAdded,
+    paymentsAll,
+    paymentsThisMonth,
   ] = await Promise.all([
+    supabase.from("applications").select("id", { count: "exact" }),
     supabase.from("applications").select("id", { count: "exact" }).gte("submitted_at", startOfMonth),
     supabase.from("applications").select("id", { count: "exact" }).gte("submitted_at", startOfLastMonth).lt("submitted_at", startOfMonth),
     supabase.from("scores").select("total_score, final_score, passed"),
-    supabase.from("scores").select("total_score, passed").gte("submitted_at", startOfMonth),
     supabase.from("credentials").select("id", { count: "exact" }),
     supabase.from("credentials").select("id", { count: "exact" }).eq("linkedin_added", true),
+    supabase.from("applications").select("payment_amount").not("payment_at", "is", null),
+    supabase.from("applications").select("payment_amount").not("payment_at", "is", null).gte("payment_at", startOfMonth),
   ]);
 
   const allScores = scoresAll.data ?? [];
-  const monthScores = scoresThisMonth.data ?? [];
 
   const avgScore = allScores.length
-    ? Math.round(allScores.reduce((sum, s) => sum + (s.final_score ?? s.total_score), 0) / allScores.length)
+    ? Math.round(allScores.reduce((sum, s) => sum + (s.final_score ?? s.total_score ?? 0), 0) / allScores.length)
     : 0;
 
   const passRateAllTime = allScores.length
     ? Math.round((allScores.filter(s => s.passed).length / allScores.length) * 100)
     : 0;
 
-  const passRateThisMonth = monthScores.length
-    ? Math.round((monthScores.filter(s => s.passed).length / monthScores.length) * 100)
-    : 0;
-
   const linkedinConversionRate = (credentialsAll.count ?? 0) > 0
     ? Math.round(((linkedinAdded.count ?? 0) / (credentialsAll.count ?? 1)) * 100)
     : 0;
+
+  const revenueAll = (paymentsAll.data ?? []).reduce((sum, r) => sum + (r.payment_amount ?? 0), 0);
+  const revenueThisMonth = (paymentsThisMonth.data ?? []).reduce((sum, r) => sum + (r.payment_amount ?? 0), 0);
 
   return NextResponse.json({
     success: true,
     data: {
       applications: {
+        total:      appsAll.count ?? 0,
         this_month: appsThisMonth.count ?? 0,
         last_month: appsLastMonth.count ?? 0,
       },
       scores: {
-        average:             avgScore,
-        pass_rate_all_time:  passRateAllTime,
-        pass_rate_this_month: passRateThisMonth,
+        average:            avgScore,
+        pass_rate_all_time: passRateAllTime,
       },
       credentials: {
-        total:                  credentialsAll.count ?? 0,
+        total:                   credentialsAll.count ?? 0,
         linkedin_conversion_pct: linkedinConversionRate,
+      },
+      revenue: {
+        all_time:   revenueAll,
+        this_month: revenueThisMonth,
       },
     },
   });
