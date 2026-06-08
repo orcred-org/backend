@@ -2,18 +2,19 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 
 export async function GET(req: NextRequest) {
-  const { searchParams, origin } = new URL(req.url);
+  const { searchParams } = new URL(req.url);
   const code = searchParams.get("code");
+  const appUrl = process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000";
 
   if (!code) {
-    return NextResponse.redirect(`${origin}/auth/error`);
+    return NextResponse.redirect(`${appUrl}/dashboard/auth?error=no_code`);
   }
 
   const supabase = await createClient();
   const { data, error } = await supabase.auth.exchangeCodeForSession(code);
 
   if (error || !data.user) {
-    return NextResponse.redirect(`${origin}/auth/error`);
+    return NextResponse.redirect(`${appUrl}/dashboard/auth?error=invalid_code`);
   }
 
   // Fetch role and redirect to correct dashboard
@@ -24,7 +25,8 @@ export async function GET(req: NextRequest) {
     .single();
 
   if (!profile) {
-    return NextResponse.redirect(`${origin}/auth/error`);
+    // User authenticated but no profile yet — send to dashboard home to handle
+    return NextResponse.redirect(`${appUrl}/dashboard`);
   }
 
   const redirectMap: Record<string, string> = {
@@ -33,6 +35,6 @@ export async function GET(req: NextRequest) {
     admin:    "/dashboard/admin",
   };
 
-  const redirectTo = redirectMap[profile.account_type] || "/auth/error";
-  return NextResponse.redirect(`${origin}${redirectTo}`);
+  const redirectTo = redirectMap[profile.account_type] || "/dashboard";
+  return NextResponse.redirect(`${appUrl}${redirectTo}`);
 }
