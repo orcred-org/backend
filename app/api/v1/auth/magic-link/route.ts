@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     email,
     options: {
       shouldCreateUser: false, // students created via separate signup flow
-      emailRedirectTo: `${process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001"}/api/v1/auth/callback`,
+      emailRedirectTo: `${process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"}/dashboard/auth/callback`,
     },
   });
 
