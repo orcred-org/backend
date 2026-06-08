@@ -1,20 +1,47 @@
 import { createClient } from "@/lib/supabase/server";
+import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { UserRole } from "@/types";
 import { NextRequest, NextResponse } from "next/server";
+import { headers } from "next/headers";
 
-export async function getSession() {
+async function getUserFromRequest(): Promise<{ id: string; email: string } | null> {
+  // Try Bearer token first (frontend direct Supabase auth)
+  const headersList = await headers();
+  const authHeader = headersList.get("authorization");
+  const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
+
+  if (bearerToken) {
+    const adminClient = createSupabaseClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
+    const { data, error } = await adminClient.auth.getUser(bearerToken);
+    if (!error && data.user) {
+      return { id: data.user.id, email: data.user.email! };
+    }
+  }
+
+  // Fall back to cookie-based session
   const supabase = await createClient();
   const { data: { user }, error } = await supabase.auth.getUser();
   if (error || !user) return null;
-  return user;
+  return { id: user.id, email: user.email! };
+}
+
+export async function getSession() {
+  return getUserFromRequest();
 }
 
 export async function getSessionWithRole(): Promise<{ id: string; email: string; role: UserRole } | null> {
-  const supabase = await createClient();
-  const { data: { user }, error } = await supabase.auth.getUser();
-  if (error || !user) return null;
+  const user = await getUserFromRequest();
+  if (!user) return null;
 
-  const { data: profile } = await supabase
+  const adminClient = createSupabaseClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!
+  );
+
+  const { data: profile } = await adminClient
     .from("users")
     .select("account_type")
     .eq("id", user.id)
@@ -24,7 +51,7 @@ export async function getSessionWithRole(): Promise<{ id: string; email: string;
 
   return {
     id: user.id,
-    email: user.email!,
+    email: user.email,
     role: profile.account_type as UserRole,
   };
 }
