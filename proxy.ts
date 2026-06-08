@@ -4,6 +4,8 @@ import { createServerClient } from "@supabase/ssr";
 const ALLOWED_ORIGINS = [
   "http://localhost:3000",
   "http://localhost:3001",
+  "https://app.orcred.com",
+  "https://orcred.com",
 ];
 
 export async function proxy(req: NextRequest) {
