@@ -3,11 +3,7 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
 const ALLOWED_ORIGINS = [
-  "http://localhost:3000",
-  "http://localhost:3001",
-  "http://localhost:3002",
-  "http://localhost:3003",
-  "https://app.orcred.com",
+  "https://dashboard.orcred.com",
   "https://orcred.com",
 ];
 
