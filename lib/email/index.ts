@@ -4,6 +4,7 @@ const resend = new Resend(process.env.RESEND_API_KEY);
 
 type EmailTemplate =
   | "magic_link"
+  | "new_application"
   | "payment_confirmed"
   | "reviewer_assigned"
   | "session_scheduled_student"
@@ -51,6 +52,21 @@ function renderTemplate(template: EmailTemplate, data: Record<string, unknown>):
   `;
 
   const templates: Record<EmailTemplate, string> = {
+    new_application: base(`
+      <p style="font-size: 15px; line-height: 1.7;"><strong>New application received.</strong></p>
+      <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin: 16px 0;">
+        <tr><td style="padding: 8px 0; color: rgba(15,13,12,0.5); width: 140px;">Name</td><td style="padding: 8px 0;"><strong>${data.name}</strong></td></tr>
+        <tr><td style="padding: 8px 0; color: rgba(15,13,12,0.5);">Email</td><td style="padding: 8px 0;">${data.email}</td></tr>
+        <tr><td style="padding: 8px 0; color: rgba(15,13,12,0.5);">Project</td><td style="padding: 8px 0;">${data.project}</td></tr>
+        <tr><td style="padding: 8px 0; color: rgba(15,13,12,0.5);">Stack</td><td style="padding: 8px 0;">${data.stack || "—"}</td></tr>
+        <tr><td style="padding: 8px 0; color: rgba(15,13,12,0.5);">LinkedIn</td><td style="padding: 8px 0;">${data.linkedin || "—"}</td></tr>
+        <tr><td style="padding: 8px 0; color: rgba(15,13,12,0.5);">Loom</td><td style="padding: 8px 0;"><a href="${data.loom}" style="color: #eb4511;">${data.loom}</a></td></tr>
+        <tr><td style="padding: 8px 0; color: rgba(15,13,12,0.5);">Timezone</td><td style="padding: 8px 0;">${data.timezone}</td></tr>
+        <tr><td style="padding: 8px 0; color: rgba(15,13,12,0.5);">Availability</td><td style="padding: 8px 0;">${data.availability}</td></tr>
+      </table>
+      <a href="https://dashboard.orcred.com/dashboard/admin" style="display: inline-block; margin-top: 16px; padding: 10px 24px; background: #eb4511; color: #ffffff; border-radius: 50px; font-size: 11px; font-weight: 600; letter-spacing: 0.15em; text-transform: uppercase; text-decoration: none;">View in Admin Dashboard</a>
+    `),
+
     magic_link: base(`
       <p style="font-size: 15px; line-height: 1.7;">Here is your login link. It expires in 15 minutes and can only be used once.</p>
       <a href="${data.link}" style="display: inline-block; margin: 24px 0; padding: 10px 24px; background: #eb4511; color: #ffffff; border-radius: 50px; font-size: 11px; font-weight: 600; letter-spacing: 0.15em; text-transform: uppercase; text-decoration: none;">Log in to Orcred</a>
