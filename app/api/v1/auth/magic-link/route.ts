@@ -30,7 +30,6 @@ export async function POST(req: NextRequest) {
   const { data, error } = await supabase.auth.admin.generateLink({
     type: "magiclink",
     email,
-    options: { shouldCreateUser: false },
   });
 
   if (!error && data?.properties?.hashed_token) {
