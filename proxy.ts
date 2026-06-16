@@ -5,6 +5,7 @@ import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 const ALLOWED_ORIGINS = [
   "https://dashboard.orcred.com",
   "https://orcred.com",
+  "https://www.orcred.com",
 ];
 
 export async function proxy(req: NextRequest) {
