@@ -32,16 +32,24 @@ export async function POST(req: NextRequest) {
     email,
   });
 
-  if (!error && data?.properties?.hashed_token) {
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
-    const link = `${backendUrl}/api/v1/auth/callback?token_hash=${data.properties.hashed_token}&type=magiclink`;
+  if (error || !data?.properties?.hashed_token) {
+    console.error("[magic-link] generateLink error:", error?.message, "email:", email);
+    // Still return success — prevents email enumeration
+    return NextResponse.json({ success: true });
+  }
 
-    sendEmail({
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
+  const link = `${backendUrl}/api/v1/auth/callback?token_hash=${data.properties.hashed_token}&type=magiclink`;
+
+  try {
+    await sendEmail({
       to: email,
       subject: "Your Orcred login link",
       template: "magic_link",
       data: { link },
-    }).catch((err) => console.error("[magic-link] email send error:", err));
+    });
+  } catch (err) {
+    console.error("[magic-link] email send error:", err);
   }
 
   return NextResponse.json({ success: true });
