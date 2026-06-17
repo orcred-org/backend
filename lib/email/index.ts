@@ -68,9 +68,13 @@ function renderTemplate(template: EmailTemplate, data: Record<string, unknown>):
     `),
 
     magic_link: base(`
-      <p style="font-size: 15px; line-height: 1.7;">Here is your login link. It expires in 15 minutes and can only be used once.</p>
-      <a href="${data.link}" style="display: inline-block; margin: 24px 0; padding: 10px 24px; background: #eb4511; color: #ffffff; border-radius: 50px; font-size: 11px; font-weight: 600; letter-spacing: 0.15em; text-transform: uppercase; text-decoration: none;">Log in to Orcred</a>
-      <p style="font-size: 12px; color: rgba(15,13,12,0.5);">If you did not request this, you can safely ignore it.</p>
+      <div style="background: #eb4511; border-radius: 4px; padding: 28px 28px 24px; margin-bottom: 32px;">
+        <p style="font-size: 11px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: rgba(255,255,255,0.7); margin: 0 0 8px;">Orcred</p>
+        <p style="font-size: 24px; font-weight: 700; color: #ffffff; margin: 0; line-height: 1.3;">Your login link is ready.</p>
+      </div>
+      <p style="font-size: 15px; line-height: 1.7; margin: 0 0 24px;">Click the button below to sign in. This link expires in 15 minutes and can only be used once.</p>
+      <a href="${data.link}" style="display: inline-block; padding: 12px 28px; background: #eb4511; color: #ffffff; border-radius: 4px; font-size: 13px; font-weight: 600; letter-spacing: 0.05em; text-decoration: none;">Log in to Orcred</a>
+      <p style="font-size: 12px; color: rgba(15,13,12,0.4); margin-top: 32px;">If you did not request this, you can safely ignore it.</p>
     `),
 
     payment_confirmed: base(`
