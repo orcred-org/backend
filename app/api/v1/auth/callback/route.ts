@@ -13,8 +13,10 @@ export async function GET(req: NextRequest) {
 
   const supabase = createServiceClient();
 
+  const otpType = type === "signup" ? "signup" : "magiclink";
+
   const { data, error } = await supabase.auth.verifyOtp({
-    type: "magiclink",
+    type: otpType,
     token_hash,
   });
 
