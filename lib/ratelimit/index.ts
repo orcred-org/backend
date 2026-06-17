@@ -6,17 +6,17 @@ const redis = new Redis({
   token: process.env.UPSTASH_REDIS_TOKEN!,
 });
 
-// 20 magic link requests per email per hour (temporarily raised for testing)
+// 3 magic link requests per email per hour
 export const magicLinkByEmail = new Ratelimit({
   redis,
-  limiter: Ratelimit.slidingWindow(20, "1 h"),
+  limiter: Ratelimit.slidingWindow(3, "1 h"),
   prefix: "rl:magic:email",
 });
 
-// 20 magic link requests per IP per hour (temporarily raised for testing)
+// 3 magic link requests per IP per hour
 export const magicLinkByIp = new Ratelimit({
   redis,
-  limiter: Ratelimit.slidingWindow(20, "1 h"),
+  limiter: Ratelimit.slidingWindow(3, "1 h"),
   prefix: "rl:magic:ip",
 });
 
