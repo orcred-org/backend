@@ -53,18 +53,20 @@ function renderTemplate(template: EmailTemplate, data: Record<string, unknown>):
 
   const templates: Record<EmailTemplate, string> = {
     new_application: base(`
-      <p style="font-size: 15px; line-height: 1.7;"><strong>New application received.</strong></p>
-      <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin: 16px 0;">
-        <tr><td style="padding: 8px 0; color: rgba(15,13,12,0.5); width: 140px;">Name</td><td style="padding: 8px 0;"><strong>${data.name}</strong></td></tr>
-        <tr><td style="padding: 8px 0; color: rgba(15,13,12,0.5);">Email</td><td style="padding: 8px 0;">${data.email}</td></tr>
-        <tr><td style="padding: 8px 0; color: rgba(15,13,12,0.5);">Project</td><td style="padding: 8px 0;">${data.project}</td></tr>
+      <div style="background: #eb4511; border-radius: 4px; padding: 28px 28px 24px; margin-bottom: 32px;">
+        <p style="font-size: 11px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: rgba(255,255,255,0.7); margin: 0 0 8px;">New Application</p>
+        <p style="font-size: 24px; font-weight: 700; color: #ffffff; margin: 0; line-height: 1.3;">${data.name} just applied.</p>
+      </div>
+      <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin: 0 0 24px;">
+        <tr><td style="padding: 8px 0; color: rgba(15,13,12,0.5); width: 140px;">Email</td><td style="padding: 8px 0;">${data.email}</td></tr>
+        <tr><td style="padding: 8px 0; color: rgba(15,13,12,0.5);">Project</td><td style="padding: 8px 0;"><strong>${data.project}</strong></td></tr>
         <tr><td style="padding: 8px 0; color: rgba(15,13,12,0.5);">Stack</td><td style="padding: 8px 0;">${data.stack || "—"}</td></tr>
         <tr><td style="padding: 8px 0; color: rgba(15,13,12,0.5);">LinkedIn</td><td style="padding: 8px 0;">${data.linkedin || "—"}</td></tr>
         <tr><td style="padding: 8px 0; color: rgba(15,13,12,0.5);">Loom</td><td style="padding: 8px 0;"><a href="${data.loom}" style="color: #eb4511;">${data.loom}</a></td></tr>
         <tr><td style="padding: 8px 0; color: rgba(15,13,12,0.5);">Timezone</td><td style="padding: 8px 0;">${data.timezone}</td></tr>
         <tr><td style="padding: 8px 0; color: rgba(15,13,12,0.5);">Availability</td><td style="padding: 8px 0;">${data.availability}</td></tr>
       </table>
-      <a href="https://dashboard.orcred.com/dashboard/admin" style="display: inline-block; margin-top: 16px; padding: 10px 24px; background: #eb4511; color: #ffffff; border-radius: 50px; font-size: 11px; font-weight: 600; letter-spacing: 0.15em; text-transform: uppercase; text-decoration: none;">View in Admin Dashboard</a>
+      <a href="https://dashboard.orcred.com/dashboard/admin" style="display: inline-block; padding: 12px 28px; background: #eb4511; color: #ffffff; border-radius: 4px; font-size: 13px; font-weight: 600; letter-spacing: 0.05em; text-decoration: none;">View in Admin Dashboard</a>
     `),
 
     magic_link: base(`
