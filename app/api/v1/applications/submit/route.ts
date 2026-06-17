@@ -141,21 +141,25 @@ export async function POST(req: NextRequest) {
     } else {
       const adminEmail = process.env.ADMIN_NOTIFY_EMAIL;
       if (adminEmail) {
-        sendEmail({
-          to: adminEmail,
-          subject: `New application — ${d.name} (${d.project})`,
-          template: "new_application",
-          data: {
-            name:         d.name,
-            email:        d.email,
-            project:      d.project,
-            stack:        d.stack,
-            linkedin:     linkedinUrl,
-            loom:         loomUrl,
-            timezone:     d.timezone,
-            availability: d.availability,
-          },
-        }).catch((err) => console.error("[applications/submit] admin notify error:", err));
+        try {
+          await sendEmail({
+            to: adminEmail,
+            subject: `New application — ${d.name} (${d.project})`,
+            template: "new_application",
+            data: {
+              name:         d.name,
+              email:        d.email,
+              project:      d.project,
+              stack:        d.stack,
+              linkedin:     linkedinUrl,
+              loom:         loomUrl,
+              timezone:     d.timezone,
+              availability: d.availability,
+            },
+          });
+        } catch (err) {
+          console.error("[applications/submit] admin notify error:", err);
+        }
       }
     }
   }
