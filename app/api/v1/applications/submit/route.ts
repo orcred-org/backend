@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { magicLinkByEmail, magicLinkByIp } from "@/lib/ratelimit";
 import { sendEmail } from "@/lib/email";
+import { sendMagicLink } from "@/lib/email/sendMagicLink";
 import { z } from "zod";
 
 const schema = z.object({
@@ -139,6 +140,11 @@ export async function POST(req: NextRequest) {
     if (appError) {
       console.error("[applications/submit] insert error:", appError.message);
     } else {
+      // Send student a magic link so they can log into their dashboard
+      sendMagicLink(d.email).catch((err) =>
+        console.error("[applications/submit] student magic link error:", err)
+      );
+
       const adminEmail = process.env.ADMIN_NOTIFY_EMAIL;
       if (adminEmail) {
         try {
