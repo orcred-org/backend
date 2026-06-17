@@ -9,9 +9,6 @@ const schema = z.object({ email: z.string().email() });
 export async function POST(req: NextRequest) {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
 
-  const { success: ipOk } = await magicLinkByIp.limit(ip);
-  if (!ipOk) return NextResponse.json({ success: false, error: "Too many requests" }, { status: 429 });
-
   let body: unknown;
   try { body = await req.json(); }
   catch { return NextResponse.json({ success: false, error: "Invalid request" }, { status: 400 }); }
@@ -20,9 +17,6 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return NextResponse.json({ success: false, error: "Invalid email" }, { status: 400 });
 
   const { email } = parsed.data;
-
-  const { success: emailOk } = await magicLinkByEmail.limit(email.toLowerCase());
-  if (!emailOk) return NextResponse.json({ success: false, error: "Too many requests" }, { status: 429 });
 
   const supabase = createServiceClient();
 
