@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 import { getSessionWithRole } from "@/lib/auth/session";
 
 export async function GET() {
@@ -7,7 +7,7 @@ export async function GET() {
   if (!session) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   if (session.role !== "student") return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
-  const supabase = await createClient();
+  const supabase = createServiceClient();
 
   // Fetch profile, active project idea, latest application, credential — all in parallel
   const [profileRes, ideaRes, applicationRes, credentialRes] = await Promise.all([

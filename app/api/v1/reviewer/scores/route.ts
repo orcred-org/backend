@@ -21,7 +21,7 @@ export async function POST(req: NextRequest) {
 
   const { application_id, technical_depth, communication, reproducibility, originality, ...rest } = parsed.data;
 
-  const supabase = await createClient();
+  const supabase = createServiceClient();
 
   // Verify assignment belongs to this reviewer and session has passed
   const { data: assignment } = await supabase

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 import { getSessionWithRole } from "@/lib/auth/session";
 
 export async function GET(
@@ -11,7 +11,7 @@ export async function GET(
   if (session.role !== "reviewer") return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   const { id } = await params;
-  const supabase = await createClient();
+  const supabase = createServiceClient();
 
   // Verify this application is assigned to this reviewer
   const { data: assignment } = await supabase

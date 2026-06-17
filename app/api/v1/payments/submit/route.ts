@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 import { getSessionWithRole } from "@/lib/auth/session";
 import { paymentSubmitSchema } from "@/lib/validators/student";
 
@@ -19,7 +19,7 @@ export async function POST(req: NextRequest) {
 
   const { application_id, utr_number } = parsed.data;
 
-  const supabase = await createClient();
+  const supabase = createServiceClient();
 
   // Verify application belongs to this student and is in submitted state
   const { data: application } = await supabase

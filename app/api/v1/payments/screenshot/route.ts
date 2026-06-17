@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Verify application belongs to student
-  const supabase = await createClient();
+  const supabase = createServiceClient();
   const { data: application } = await supabase
     .from("applications")
     .select("id, user_id")

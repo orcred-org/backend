@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 import { getSessionWithRole } from "@/lib/auth/session";
 import { createToken } from "@/lib/video";
 
@@ -11,7 +11,7 @@ export async function GET(
   if (!session) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
 
   const { room } = await params;
-  const supabase = await createClient();
+  const supabase = createServiceClient();
 
   // Find assignment for this room
   const { data: assignment } = await supabase

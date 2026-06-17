@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 import { getSessionWithRole } from "@/lib/auth/session";
 import { applicationByUser } from "@/lib/ratelimit";
 import { submitApplicationSchema } from "@/lib/validators/student";
@@ -9,7 +9,7 @@ export async function GET() {
   if (!session) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   if (session.role !== "student") return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
-  const supabase = await createClient();
+  const supabase = createServiceClient();
   const { data, error } = await supabase
     .from("applications")
     .select(`
@@ -46,7 +46,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Check profile is 100% complete
-  const supabase = await createClient();
+  const supabase = createServiceClient();
   const { data: profile } = await supabase
     .from("users")
     .select("full_name, college, graduation_year, linkedin_url")

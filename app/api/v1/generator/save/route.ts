@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/server";
 import { getSessionWithRole } from "@/lib/auth/session";
 import { saveIdeaSchema } from "@/lib/validators/generator";
 
@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: parsed.error.flatten() }, { status: 422 });
   }
 
-  const supabase = await createClient();
+  const supabase = createServiceClient();
 
   // Deactivate current active idea
   await supabase
