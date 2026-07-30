@@ -2,27 +2,53 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 
-const ALLOWED_ORIGINS = [
+const PRODUCTION_ORIGINS = [
   "https://dashboard.orcred.com",
   "https://orcred.com",
   "https://www.orcred.com",
 ];
 
+const LOCAL_ORIGINS = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+];
+
+function isAllowedOrigin(origin: string): boolean {
+  if (!origin) return false;
+  if (PRODUCTION_ORIGINS.includes(origin) || LOCAL_ORIGINS.includes(origin)) {
+    return true;
+  }
+  // Any localhost port in non-production (e.g. alternate dev ports)
+  if (process.env.NODE_ENV !== "production") {
+    return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+  }
+  return false;
+}
+
+function applyCorsHeaders(headers: Headers, origin: string): void {
+  headers.set("Access-Control-Allow-Origin", origin);
+  headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, Cookie");
+  headers.set("Access-Control-Allow-Credentials", "true");
+}
+
 export async function proxy(req: NextRequest) {
   const res = NextResponse.next();
   const { pathname } = req.nextUrl;
 
-  // Dynamic CORS — reflect origin back if it's on the allowlist
   const origin = req.headers.get("origin") ?? "";
-  if (ALLOWED_ORIGINS.includes(origin)) {
-    res.headers.set("Access-Control-Allow-Origin", origin);
-    res.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-    res.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, Cookie");
-    res.headers.set("Access-Control-Allow-Credentials", "true");
+  const allowed = isAllowedOrigin(origin);
+
+  if (allowed) {
+    applyCorsHeaders(res.headers, origin);
   }
-  // Handle preflight
+
   if (req.method === "OPTIONS") {
-    return new NextResponse(null, { status: 204, headers: res.headers });
+    const preflight = new NextResponse(null, { status: 204 });
+    if (allowed) {
+      applyCorsHeaders(preflight.headers, origin);
+    }
+    return preflight;
   }
 
   // Admin IP allowlist

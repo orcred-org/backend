@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true });
   }
 
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001";
   const link = `${backendUrl}/api/v1/auth/callback?token_hash=${data.properties.hashed_token}&type=magiclink`;
 
   try {
