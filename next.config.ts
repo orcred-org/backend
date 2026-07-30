@@ -1,28 +1,23 @@
 import type { NextConfig } from "next";
 
+const isProd = process.env.NODE_ENV === "production";
+
 const nextConfig: NextConfig = {
-  headers: async () => [
-    {
-      source: "/:path*",
-      headers: [
-        {
-          key: "Content-Security-Policy",
-          value: [
-            "default-src 'self'",
-            "script-src 'self'",
-            "img-src 'self' data: https:",
-            "connect-src 'self' https://*.supabase.co https://api.anthropic.com https://*.daily.co",
-            "frame-ancestors 'none'",
-          ].join("; "),
-        },
-        { key: "X-Frame-Options",           value: "DENY" },
-        { key: "X-Content-Type-Options",    value: "nosniff" },
-        { key: "Referrer-Policy",           value: "strict-origin-when-cross-origin" },
-        { key: "Permissions-Policy",        value: "camera=(), microphone=(), geolocation=()" },
-        { key: "Strict-Transport-Security", value: "max-age=31536000; includeSubDomains" },
-      ],
-    },
-  ],
+  // Strict CSP breaks Next.js dev (HMR uses inline scripts/styles). Apply in prod only.
+  headers: async () => {
+    if (!isProd) return [];
+
+    return [
+      {
+        source: "/api/:path*",
+        headers: [
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "X-Frame-Options", value: "DENY" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

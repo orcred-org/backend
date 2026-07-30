@@ -1,69 +1,62 @@
-import { NextRequest, NextResponse } from "next/server";
-import { createServiceClient } from "@/lib/supabase/server";
-import { verifyByIp } from "@/lib/ratelimit";
 import crypto from "crypto";
+import { NextRequest } from "next/server";
+import { createServiceClient } from "@/lib/supabase/server";
+import { generateCredentialHash } from "@/lib/credentials";
+import { corsJson } from "@/lib/cors";
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ credential_id: string }> }
 ) {
-  const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
-  const { success: rateLimitOk } = await verifyByIp.limit(ip);
-  if (!rateLimitOk) {
-    return NextResponse.json({ success: false, error: "Too many requests" }, { status: 429 });
-  }
-
   const { credential_id } = await params;
   const supabase = createServiceClient();
 
-  const { data, error } = await supabase
+  const { data: credential, error } = await supabase
     .from("credentials")
-    .select(`
-      credential_id, credential_url, issued_at, hash, public_opt_in,
-      users:user_id (
-        full_name, linkedin_url
-      ),
-      applications:application_id (
-        project_name, tech_stack
-      ),
-      scores:application_id (
-        total_score, final_score, passed,
-        technical_depth, communication, reproducibility, originality
-      )
-    `)
+    .select("id, credential_id, user_id, application_id, issued_at, hash")
     .eq("credential_id", credential_id)
     .single();
 
-  if (error || !data) {
-    return NextResponse.json({ success: false, error: "Credential not found" }, { status: 404 });
+  if (error || !credential) {
+    return corsJson(req, { success: false, error: "Credential not found" }, 404);
   }
 
-  // Verify hash
-  const expectedHash = crypto
-    .createHmac("sha256", process.env.CREDENTIAL_HASH_SECRET!)
-    .update(`${data.credential_id}:${(data.users as any).id}:${data.issued_at}`)
-    .digest("hex");
-
-  const isValid = crypto.timingSafeEqual(
-    Buffer.from(expectedHash),
-    Buffer.from(data.hash)
+  const expectedHash = generateCredentialHash(
+    credential.credential_id,
+    credential.user_id,
+    credential.issued_at
   );
 
-  // Only return LinkedIn if student opted in
-  const user = data.users as any;
+  const stored = Buffer.from(credential.hash);
+  const expected = Buffer.from(expectedHash);
+  if (stored.length !== expected.length || !crypto.timingSafeEqual(stored, expected)) {
+    return corsJson(req, { success: false, error: "Credential integrity check failed" }, 404);
+  }
 
-  return NextResponse.json({
+  const [{ data: user }, { data: app }, { data: score }] = await Promise.all([
+    supabase.from("users").select("full_name").eq("id", credential.user_id).single(),
+    supabase.from("applications").select("project_name, tech_stack").eq("id", credential.application_id).single(),
+    supabase.from("scores").select("final_score, total_score, technical_depth, communication, reproducibility, problem_solving, passed")
+      .eq("application_id", credential.application_id).maybeSingle(),
+  ]);
+
+  return corsJson(req, {
     success: true,
     data: {
-      credential_id:  data.credential_id,
-      credential_url: data.credential_url,
-      issued_at:      data.issued_at,
-      is_valid:       isValid,
-      student_name:   user.full_name,
-      linkedin_url:   data.public_opt_in ? user.linkedin_url : null,
-      project_name:   (data.applications as any).project_name,
-      tech_stack:     (data.applications as any).tech_stack,
-      scores:         data.scores,
+      credential_id: credential.credential_id,
+      issued_at:     credential.issued_at,
+      student_name:  user?.full_name ?? "Verified Engineer",
+      project_name:  app?.project_name ?? null,
+      tech_stack:    app?.tech_stack ?? null,
+      score: score ? {
+        total:           score.final_score ?? score.total_score,
+        technical_depth: score.technical_depth,
+        communication:   score.communication,
+        reproducibility: score.reproducibility,
+        problem_solving:     score.problem_solving,
+        passed:          score.passed,
+      } : null,
+      verified: true,
     },
   });
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { getSessionWithRole, isAllowedAdminIp } from "@/lib/auth/session";
+import { getSessionWithRole, isAllowedAdminIp, allowsRole } from "@/lib/auth/session";
 import { updateReviewerSchema } from "@/lib/validators/admin";
 
 export async function PUT(
@@ -12,7 +12,7 @@ export async function PUT(
   }
 
   const session = await getSessionWithRole();
-  if (!session || session.role !== "admin") {
+  if (!allowsRole(session, "admin")) {
     return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
   }
 

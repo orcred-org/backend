@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { getSessionWithRole } from "@/lib/auth/session";
+import { getSessionWithRole, allowsRole } from "@/lib/auth/session";
 
 export async function PUT(
   _req: NextRequest,
@@ -8,7 +8,7 @@ export async function PUT(
 ) {
   const session = await getSessionWithRole();
   if (!session) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "student") return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  if (!allowsRole(session, "student")) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   const { id } = await params;
   const supabase = createServiceClient();

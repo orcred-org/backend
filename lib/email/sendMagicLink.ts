@@ -3,7 +3,7 @@ import { sendEmail } from "@/lib/email";
 
 export async function sendMagicLink(email: string) {
   const supabase = createServiceClient();
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001";
 
   const { data, error } = await supabase.auth.admin.generateLink({
     type: "magiclink",
@@ -15,7 +15,7 @@ export async function sendMagicLink(email: string) {
     return;
   }
 
-  const link = `${backendUrl}/api/v1/auth/callback?token_hash=${data.properties.hashed_token}&type=magiclink`;
+  const link = `${backendUrl}/api/v1/auth/callback?token_hash=${data.properties.hashed_token}&type=email`;
 
   try {
     await sendEmail({

@@ -2,85 +2,169 @@ import crypto from "crypto";
 import { createServiceClient } from "@/lib/supabase/server";
 import { sendEmail } from "@/lib/email";
 
+export interface IssuedCredential {
+  credentialId: string;
+  credentialUrl: string;
+  issuedAt: string;
+  hash: string;
+}
+
+export function credentialBaseUrl(): string {
+  const app = process.env.NEXT_PUBLIC_APP_URL?.replace(/\/$/, "");
+  if (app) return app;
+  if (process.env.NODE_ENV !== "production") return "http://localhost:3000";
+  return "https://orcred.com";
+}
+
 export function generateCredentialHash(
   credentialId: string,
   userId: string,
   issuedAt: string
 ): string {
+  const secret = process.env.CREDENTIAL_HASH_SECRET;
+  if (!secret) throw new Error("CREDENTIAL_HASH_SECRET is not configured");
+
+  // Postgres returns +00:00; we store with Z — normalize so verify always matches
+  const normalized = new Date(issuedAt).toISOString();
+
   return crypto
-    .createHmac("sha256", process.env.CREDENTIAL_HASH_SECRET!)
-    .update(`${credentialId}:${userId}:${issuedAt}`)
+    .createHmac("sha256", secret)
+    .update(`${credentialId}:${userId}:${normalized}`)
     .digest("hex");
 }
 
-export async function issueCredential(applicationId: string, userId: string) {
+function addDays(base: Date, days: number): string {
+  const d = new Date(base);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().split("T")[0];
+}
+
+async function createPlacementTracking(
+  userId: string,
+  credentialUuid: string,
+  issuedAt: string
+) {
   const supabase = createServiceClient();
-  const issuedAt = new Date().toISOString();
+  const base = new Date(issuedAt);
 
-  // Use Postgres sequence for race-safe sequential ID
-  const { data: seqRow } = await supabase
-    .rpc("next_credential_sequence") as { data: number };
+  const { data: existing } = await supabase
+    .from("placement_tracking")
+    .select("id")
+    .eq("credential_id", credentialUuid)
+    .maybeSingle();
 
-  const year = new Date().getFullYear();
-  const credentialId = `ORC-${year}-${String(seqRow).padStart(3, "0")}`;
-  const credentialUrl = `https://orcred.com/verify/${credentialId}`;
-  const hash = generateCredentialHash(credentialId, userId, issuedAt);
+  if (existing) return;
 
-  const { data: credential, error } = await supabase
-    .from("credentials")
-    .insert({
-      application_id: applicationId,
-      user_id:        userId,
-      credential_id:  credentialId,
-      credential_url: credentialUrl,
-      issued_at:      issuedAt,
-      hash,
-      linkedin_added: false,
-      public_opt_in:  false,
-    })
-    .select("id, credential_id, credential_url, issued_at")
-    .single();
-
-  if (error) throw new Error(`Credential issuance failed: ${error.message}`);
-
-  // Kick off placement tracking
   await supabase.from("placement_tracking").insert({
-    user_id:          userId,
-    credential_id:    credential.id,
-    followup_30_due:  daysFromNow(30),
-    followup_60_due:  daysFromNow(60),
-    followup_90_due:  daysFromNow(90),
-    followup_30_sent: false,
-    followup_60_sent: false,
-    followup_90_sent: false,
+    user_id:       userId,
+    credential_id: credentialUuid,
+    followup_30_due: addDays(base, 30),
+    followup_60_due: addDays(base, 60),
+    followup_90_due: addDays(base, 90),
   });
+}
 
-  // Get student + score details for email
-  const [userRes, scoreRes, appRes] = await Promise.all([
+async function sendPassEmail(
+  userId: string,
+  applicationId: string,
+  credential: IssuedCredential,
+  totalScore: number
+) {
+  const supabase = createServiceClient();
+  const [{ data: user }, { data: app }] = await Promise.all([
     supabase.from("users").select("email, full_name").eq("id", userId).single(),
-    supabase.from("scores").select("final_score, total_score").eq("application_id", applicationId).single(),
     supabase.from("applications").select("project_name").eq("id", applicationId).single(),
   ]);
 
-  if (userRes.data) {
-    await sendEmail({
-      to:       userRes.data.email,
-      subject:  "You passed — your Orcred credential is ready",
-      template: "score_passed",
-      data: {
-        student_name:   userRes.data.full_name,
-        score:          scoreRes.data?.final_score ?? scoreRes.data?.total_score,
-        credential_url: credentialUrl,
-        project_name:   appRes.data?.project_name,
-      },
-    });
-  }
+  if (!user?.email) return;
 
-  return credential;
+  await sendEmail({
+    to:       user.email,
+    subject:  `You passed — your Orcred credential is live`,
+    template: "score_passed",
+    data: {
+      student_name:   user.full_name ?? "there",
+      project_name:   app?.project_name ?? "your project",
+      score:          totalScore,
+      credential_url: credential.credentialUrl,
+    },
+  });
 }
 
-function daysFromNow(days: number): string {
-  const d = new Date();
-  d.setDate(d.getDate() + days);
-  return d.toISOString().split("T")[0];
+/**
+ * sequence → ID → hash → insert row → placement + email → return credential.
+ * Idempotent per application_id.
+ */
+export async function issueCredential(
+  applicationId: string,
+  userId: string,
+  options?: { totalScore?: number; skipEmail?: boolean }
+): Promise<IssuedCredential> {
+  const supabase = createServiceClient();
+
+  const { data: existing } = await supabase
+    .from("credentials")
+    .select("id, credential_id, credential_url, issued_at, hash")
+    .eq("application_id", applicationId)
+    .maybeSingle();
+
+  if (existing) {
+    return {
+      credentialId: existing.credential_id,
+      credentialUrl: existing.credential_url,
+      issuedAt: existing.issued_at,
+      hash: existing.hash,
+    };
+  }
+
+  const { data: seqRow, error: seqError } = await supabase.rpc("next_credential_sequence");
+  if (seqError) {
+    throw new Error(`Failed to get credential sequence: ${seqError.message}`);
+  }
+
+  const year = new Date().getFullYear();
+  const credentialId = `ORC-${year}-${String(seqRow).padStart(3, "0")}`;
+  const credentialUrl = `${credentialBaseUrl()}/verify/${credentialId}`;
+  const issuedAt = new Date().toISOString();
+  const hash = generateCredentialHash(credentialId, userId, issuedAt);
+
+  const { data: inserted, error: insertError } = await supabase
+    .from("credentials")
+    .insert({
+      application_id: applicationId,
+      user_id: userId,
+      credential_id: credentialId,
+      credential_url: credentialUrl,
+      hash,
+      issued_at: issuedAt,
+    })
+    .select("id")
+    .single();
+
+  if (insertError || !inserted) {
+    throw new Error(`Failed to insert credential: ${insertError?.message ?? "unknown"}`);
+  }
+
+  const issued: IssuedCredential = { credentialId, credentialUrl, issuedAt, hash };
+
+  await createPlacementTracking(userId, inserted.id, issuedAt);
+
+  if (!options?.skipEmail) {
+    let totalScore = options?.totalScore;
+    if (totalScore == null) {
+      const { data: score } = await supabase
+        .from("scores")
+        .select("final_score, total_score")
+        .eq("application_id", applicationId)
+        .maybeSingle();
+      totalScore = score?.final_score ?? score?.total_score ?? 0;
+    }
+    try {
+      await sendPassEmail(userId, applicationId, issued, totalScore);
+    } catch {
+      /* email failure must not roll back credential */
+    }
+  }
+
+  return issued;
 }

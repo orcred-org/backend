@@ -7,10 +7,16 @@ import { z } from "zod";
 const schema = z.object({ email: z.string().email() });
 
 export async function POST(req: NextRequest) {
+  try {
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
 
   const { success: ipOk } = await magicLinkByIp.limit(ip);
-  if (!ipOk) return NextResponse.json({ success: false, error: "Too many requests" }, { status: 429 });
+  if (!ipOk) {
+    return NextResponse.json(
+      { success: false, error: "Too many login attempts. Wait up to 1 hour and try again." },
+      { status: 429 }
+    );
+  }
 
   let body: unknown;
   try { body = await req.json(); }
@@ -22,7 +28,12 @@ export async function POST(req: NextRequest) {
   const { email } = parsed.data;
 
   const { success: emailOk } = await magicLinkByEmail.limit(email.toLowerCase());
-  if (!emailOk) return NextResponse.json({ success: false, error: "Too many requests" }, { status: 429 });
+  if (!emailOk) {
+    return NextResponse.json(
+      { success: false, error: "Too many login attempts for this email. Wait up to 1 hour and try again." },
+      { status: 429 }
+    );
+  }
 
   const supabase = createServiceClient();
 
@@ -38,8 +49,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: true });
   }
 
-  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3000";
-  const link = `${backendUrl}/api/v1/auth/callback?token_hash=${data.properties.hashed_token}&type=magiclink`;
+  const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001";
+  const link = `${backendUrl}/api/v1/auth/callback?token_hash=${data.properties.hashed_token}&type=email`;
 
   try {
     await sendEmail({
@@ -53,4 +64,9 @@ export async function POST(req: NextRequest) {
   }
 
   return NextResponse.json({ success: true });
+  } catch (err) {
+    console.error("[magic-link] unhandled error:", err);
+    const message = err instanceof Error ? err.message : "Internal server error";
+    return NextResponse.json({ success: false, error: message }, { status: 500 });
+  }
 }

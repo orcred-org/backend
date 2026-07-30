@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { verifyDailyWebhook } from "@/lib/video";
-import { issueCredential } from "@/lib/credentials";
 import { sendEmail } from "@/lib/email";
 
 export async function POST(req: NextRequest) {

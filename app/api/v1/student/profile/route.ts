@@ -1,13 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { getSessionWithRole } from "@/lib/auth/session";
+import { getSessionWithRole, allowsRole } from "@/lib/auth/session";
 import { updateProfileSchema } from "@/lib/validators/student";
+
+function normaliseUrl(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return trimmed;
+  return trimmed.startsWith("http") ? trimmed : `https://${trimmed}`;
+}
 
 export async function GET() {
   try {
     const session = await getSessionWithRole();
     if (!session) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    if (session.role !== "student") return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+    if (!allowsRole(session, "student")) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
     const supabase = createServiceClient();
     const { data, error } = await supabase
@@ -35,15 +41,25 @@ export async function PUT(req: NextRequest) {
   try {
     const session = await getSessionWithRole();
     if (!session) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-    if (session.role !== "student") return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+    if (!allowsRole(session, "student")) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
     let body: unknown;
     try { body = await req.json(); }
     catch { return NextResponse.json({ success: false, error: "Invalid request" }, { status: 400 }); }
 
-    const parsed = updateProfileSchema.safeParse(body);
+    const raw = typeof body === "object" && body !== null ? { ...body as Record<string, unknown> } : body;
+    if (raw && typeof raw === "object" && typeof (raw as Record<string, unknown>).linkedin_url === "string") {
+      (raw as Record<string, unknown>).linkedin_url = normaliseUrl(
+        (raw as Record<string, unknown>).linkedin_url as string,
+      );
+    }
+
+    const parsed = updateProfileSchema.safeParse(raw);
     if (!parsed.success) {
-      return NextResponse.json({ success: false, error: parsed.error.flatten() }, { status: 422 });
+      return NextResponse.json(
+        { success: false, error: "Validation failed", details: parsed.error.flatten() },
+        { status: 422 },
+      );
     }
 
     const supabase = createServiceClient();

@@ -1,3 +1,5 @@
+import { SESSION_DURATION_MINUTES } from "@/lib/session/audit";
+
 const DAILY_API = "https://api.daily.co/v1";
 
 interface DailyRoom {
@@ -10,9 +12,48 @@ interface DailyToken {
   token: string;
 }
 
-export async function createRoom(sessionDate: string): Promise<DailyRoom> {
+/** Room/token expiry — never sooner than 2h from now (handles past test sessions). */
+export function getDailyExpirationEpoch(sessionDate: string): number {
   const sessionEnd = new Date(sessionDate);
-  sessionEnd.setMinutes(sessionEnd.getMinutes() + 90); // room expires 30 min after 60-min session
+  sessionEnd.setMinutes(sessionEnd.getMinutes() + SESSION_DURATION_MINUTES);
+  const floor = Date.now() + 2 * 60 * 60 * 1000;
+  return Math.floor(Math.max(sessionEnd.getTime(), floor) / 1000);
+}
+
+export async function isDailyRoomValid(roomName: string): Promise<boolean> {
+  if (!process.env.DAILY_API_KEY) return false;
+
+  const res = await fetch(`${DAILY_API}/rooms/${encodeURIComponent(roomName)}`, {
+    headers: { Authorization: `Bearer ${process.env.DAILY_API_KEY}` },
+  });
+
+  if (!res.ok) return false;
+
+  const room = (await res.json()) as { config?: { exp?: number } };
+  const exp = room.config?.exp;
+  if (exp && exp * 1000 <= Date.now()) return false;
+
+  return true;
+}
+
+export async function createRoom(sessionDate: string): Promise<DailyRoom> {
+  const exp = getDailyExpirationEpoch(sessionDate);
+
+  const properties: Record<string, unknown> = {
+    exp,
+    max_participants:   2,
+    enable_chat:        false,
+    enable_screenshare: true,
+    start_video_off:    true,
+    start_audio_off:    false,
+    enable_prejoin_ui:  false,
+    lang:               "en",
+  };
+
+  // Cloud recording requires a paid Daily plan — opt in via DAILY_ENABLE_RECORDING=true
+  if (process.env.DAILY_ENABLE_RECORDING === "true") {
+    properties.enable_recording = "cloud";
+  }
 
   const res = await fetch(`${DAILY_API}/rooms`, {
     method: "POST",
@@ -22,18 +63,7 @@ export async function createRoom(sessionDate: string): Promise<DailyRoom> {
     },
     body: JSON.stringify({
       privacy: "private",
-      properties: {
-        exp:                     Math.floor(sessionEnd.getTime() / 1000),
-        max_participants:        2,
-        enable_chat:             false,       // prevents sharing answers
-        enable_screenshare:      true,
-        start_video_off:         false,
-        start_audio_off:         false,
-        enable_recording:        "cloud",
-        recording_type:          "cloud",
-        enable_prejoin_ui:       true,        // waiting room
-        lang:                    "en",
-      },
+      properties,
     }),
   });
 
@@ -48,10 +78,27 @@ export async function createRoom(sessionDate: string): Promise<DailyRoom> {
 export async function createToken(
   roomName: string,
   isHost: boolean,
-  sessionDate: string
+  sessionDate: string,
+  userName?: string,
 ): Promise<DailyToken> {
-  const sessionEnd = new Date(sessionDate);
-  sessionEnd.setMinutes(sessionEnd.getMinutes() + 90);
+  const exp = getDailyExpirationEpoch(sessionDate);
+
+  const properties: Record<string, unknown> = {
+    room_name:          roomName,
+    is_owner:           isHost,
+    exp,
+    enable_screenshare: true,
+    start_video_off:    true,
+    start_audio_off:    false,
+  };
+
+  if (!isHost) {
+    properties.enable_screenshare = false;
+  }
+
+  if (userName?.trim()) {
+    properties.user_name = userName.trim();
+  }
 
   const res = await fetch(`${DAILY_API}/meeting-tokens`, {
     method: "POST",
@@ -59,16 +106,7 @@ export async function createToken(
       "Authorization": `Bearer ${process.env.DAILY_API_KEY}`,
       "Content-Type":  "application/json",
     },
-    body: JSON.stringify({
-      properties: {
-        room_name:   roomName,
-        is_owner:    isHost,
-        exp:         Math.floor(sessionEnd.getTime() / 1000),
-        enable_screenshare: true,
-        start_video_off:    false,
-        start_audio_off:    false,
-      },
-    }),
+    body: JSON.stringify({ properties }),
   });
 
   if (!res.ok) {

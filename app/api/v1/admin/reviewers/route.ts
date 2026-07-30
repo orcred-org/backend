@@ -1,26 +1,31 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { getSessionWithRole, isAllowedAdminIp } from "@/lib/auth/session";
+import { getSessionWithRole, isAllowedAdminIp, allowsRole } from "@/lib/auth/session";
+import { corsJson } from "@/lib/cors";
 
 export async function GET(req: NextRequest) {
   if (!isAllowedAdminIp(req)) {
-    return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+    return corsJson(req, { success: false, error: "Forbidden" }, 403);
   }
 
-  const session = await getSessionWithRole();
-  if (!session || session.role !== "admin") {
-    return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  const session = await getSessionWithRole(req);
+  if (!session) {
+    return corsJson(req, { success: false, error: "Unauthorized" }, 401);
+  }
+  if (!allowsRole(session, "admin")) {
+    return corsJson(req, { success: false, error: "Admin access required" }, 403);
   }
 
   const supabase = createServiceClient();
 
+  // Reviewers + admins who completed reviewer onboarding (demo accounts use admin + reviewer profile)
   const { data: reviewers, error } = await supabase
     .from("users")
-    .select("id, full_name, email, linkedin_url, created_at")
-    .eq("account_type", "reviewer")
+    .select("id, full_name, email, linkedin_url, created_at, account_type, reviewer_onboarding_complete")
+    .or("account_type.eq.reviewer,and(account_type.eq.admin,reviewer_onboarding_complete.eq.true)")
     .order("created_at", { ascending: false });
 
-  if (error) return NextResponse.json({ success: false, error: "Failed to fetch" }, { status: 500 });
+  if (error) return corsJson(req, { success: false, error: "Failed to fetch" }, 500);
 
   // Enrich with session stats per reviewer
   const enriched = await Promise.all(
@@ -56,5 +61,5 @@ export async function GET(req: NextRequest) {
     })
   );
 
-  return NextResponse.json({ success: true, data: enriched });
+  return corsJson(req, { success: true, data: enriched });
 }

@@ -1,0 +1,2 @@
+-- Local dev seed is handled by: npm run db:seed
+-- (creates auth.users + public.users via service role — see scripts/seed-local-users.mjs)
