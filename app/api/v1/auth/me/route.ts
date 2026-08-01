@@ -1,5 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
+import { corsJson, corsPreflight } from "@/lib/cors";
+
+export async function OPTIONS(req: NextRequest) {
+  return corsPreflight(req);
+}
 
 export async function GET(req: NextRequest) {
   try {
@@ -20,7 +25,7 @@ export async function GET(req: NextRequest) {
     }
 
     if (!userId) {
-      return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
+      return corsJson(req, { error: "Not authenticated" }, 401);
     }
 
     const { data: userData, error: dbError } = await adminClient
@@ -30,19 +35,20 @@ export async function GET(req: NextRequest) {
       .single();
 
     if (dbError || !userData) {
-      return NextResponse.json({ error: "User not found in database" }, { status: 404 });
+      return corsJson(req, { error: "User not found in database" }, 404);
     }
 
-    return NextResponse.json(userData);
+    return corsJson(req, userData);
   } catch (error) {
     console.error("Auth me error:", error);
     const message = error instanceof Error ? error.message : "Internal server error";
     if (message.includes("missing Supabase config")) {
-      return NextResponse.json(
+      return corsJson(
+        req,
         { error: "Server misconfigured: SUPABASE_SERVICE_ROLE_KEY is not set on the backend" },
-        { status: 503 },
+        503,
       );
     }
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
+    return corsJson(req, { error: "Internal server error" }, 500);
   }
 }

@@ -43,3 +43,9 @@ export function corsJson(req: NextRequest, body: unknown, status = 200) {
   const res = NextResponse.json(body, { status });
   return applyCorsHeaders(res, req.headers.get("origin") ?? "");
 }
+
+/** Route-level OPTIONS handler — proxy handles preflight too, but this covers edge cases. */
+export function corsPreflight(req: NextRequest) {
+  const res = new NextResponse(null, { status: 204 });
+  return applyCorsHeaders(res, req.headers.get("origin") ?? "");
+}

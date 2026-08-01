@@ -1,11 +1,16 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { magicLinkByEmail, magicLinkByIp } from "@/lib/ratelimit";
 import { sendEmail } from "@/lib/email";
 import { isAdminOnlyAuth } from "@/lib/platformGates";
+import { corsJson, corsPreflight } from "@/lib/cors";
 import { z } from "zod";
 
 const schema = z.object({ email: z.string().email() });
+
+export async function OPTIONS(req: NextRequest) {
+  return corsPreflight(req);
+}
 
 async function ensureAuthUser(
   supabase: ReturnType<typeof createServiceClient>,
@@ -38,27 +43,29 @@ export async function POST(req: NextRequest) {
 
   const { success: ipOk } = await magicLinkByIp.limit(ip);
   if (!ipOk) {
-    return NextResponse.json(
+    return corsJson(
+      req,
       { success: false, error: "Too many login attempts. Wait up to 1 hour and try again." },
-      { status: 429 }
+      429,
     );
   }
 
   let body: unknown;
   try { body = await req.json(); }
-  catch { return NextResponse.json({ success: false, error: "Invalid request" }, { status: 400 }); }
+  catch { return corsJson(req, { success: false, error: "Invalid request" }, 400); }
 
   const parsed = schema.safeParse(body);
-  if (!parsed.success) return NextResponse.json({ success: false, error: "Invalid email" }, { status: 400 });
+  if (!parsed.success) return corsJson(req, { success: false, error: "Invalid email" }, 400);
 
   const { email } = parsed.data;
   const normalizedEmail = email.toLowerCase();
 
   const { success: emailOk } = await magicLinkByEmail.limit(normalizedEmail);
   if (!emailOk) {
-    return NextResponse.json(
+    return corsJson(
+      req,
       { success: false, error: "Too many login attempts for this email. Wait up to 1 hour and try again." },
-      { status: 429 }
+      429,
     );
   }
 
@@ -74,12 +81,12 @@ export async function POST(req: NextRequest) {
     if (!profile || profile.account_type !== "admin") {
       console.info("[magic-link] skipped — not an admin profile:", normalizedEmail);
       // Same response as success — no email enumeration; never create Auth users
-      return NextResponse.json({ success: true });
+      return corsJson(req, { success: true });
     }
   }
 
   if (!(await ensureAuthUser(supabase, normalizedEmail))) {
-    return NextResponse.json({ success: true });
+    return corsJson(req, { success: true });
   }
 
   // Always return success — prevents email enumeration
@@ -91,7 +98,7 @@ export async function POST(req: NextRequest) {
   if (error || !data?.properties?.hashed_token) {
     console.error("[magic-link] generateLink error:", error?.message, "email:", normalizedEmail);
     // Still return success — prevents email enumeration
-    return NextResponse.json({ success: true });
+    return corsJson(req, { success: true });
   }
 
   const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001";
@@ -109,10 +116,10 @@ export async function POST(req: NextRequest) {
     console.error("[magic-link] email send error:", err);
   }
 
-  return NextResponse.json({ success: true });
+  return corsJson(req, { success: true });
   } catch (err) {
     console.error("[magic-link] unhandled error:", err);
     const message = err instanceof Error ? err.message : "Internal server error";
-    return NextResponse.json({ success: false, error: message }, { status: 500 });
+    return corsJson(req, { success: false, error: message }, 500);
   }
 }
