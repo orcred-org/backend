@@ -22,6 +22,7 @@ export async function proxy(req: NextRequest) {
     "/api/v1/auth/me",
     "/api/v1/verify",
     "/api/v1/applications/submit",
+    "/api/v1/waitlist/submit",
     "/api/v1/generator/generate",
   ];
 

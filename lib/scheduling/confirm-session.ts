@@ -83,13 +83,22 @@ export async function confirmSessionSchedule(
 
   const sessionLabel = formatSessionLabel(sessionDate);
   const sessionPageUrl = `${DASHBOARD_URL}/dashboard/session/${assignmentId}`;
-  const app = assignment.applications as {
+  const appRaw = assignment.applications;
+  const app = (Array.isArray(appRaw) ? appRaw[0] : appRaw) as {
     project_name: string;
     tech_stack?: string;
-    users: { email: string; full_name: string };
+    users: { email: string; full_name: string } | { email: string; full_name: string }[];
   };
-  const reviewer = assignment.reviewers as { email: string; full_name: string };
-  const student = app.users;
+  const reviewerRaw = assignment.reviewers;
+  const reviewer = (Array.isArray(reviewerRaw) ? reviewerRaw[0] : reviewerRaw) as {
+    email: string;
+    full_name: string;
+  };
+  const studentRaw = app.users;
+  const student = (Array.isArray(studentRaw) ? studentRaw[0] : studentRaw) as {
+    email: string;
+    full_name: string;
+  };
 
   const studentSubject = opts?.isReschedule
     ? "Your Orcred review session has been rescheduled"

@@ -8,7 +8,7 @@ import { requiresEarlyEndReason } from "@/lib/session/audit";
 export async function POST(req: NextRequest) {
   const session = await getSessionWithRole(req);
   if (!session) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-  if (!allowsRole(session, "student") && !isDevFullAccess(session.email)) {
+  if (!allowsRole(session, "student") && !isDevFullAccess(session?.email)) {
     return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
   }
 
@@ -31,6 +31,7 @@ export async function POST(req: NextRequest) {
     .from("reviewer_assignments")
     .select(`
       id, application_id, session_date, session_completed_at, workflow_stage,
+      reviewer_early_end_reason,
       applications:application_id (user_id)
     `)
     .eq("id", assignment_id)
@@ -66,7 +67,10 @@ export async function POST(req: NextRequest) {
     && !!assignment.session_completed_at
     && requiresEarlyEndReason(assignment.session_date, assignment.session_completed_at);
 
-  if (needsEarlyReason && !early_end_reason?.trim()) {
+  const reviewerProvidedReason = !!assignment.reviewer_early_end_reason?.trim();
+  const needsStudentEarlyReason = needsEarlyReason && !reviewerProvidedReason;
+
+  if (needsStudentEarlyReason && !early_end_reason?.trim()) {
     return NextResponse.json(
       {
         success: false,
@@ -83,7 +87,7 @@ export async function POST(req: NextRequest) {
       student_feedback_audio: feedback_audio ?? null,
       student_feedback_video: feedback_video ?? null,
       student_feedback_notes: feedback_notes?.trim() || null,
-      ...(needsEarlyReason && early_end_reason?.trim()
+      ...(needsStudentEarlyReason && early_end_reason?.trim()
         ? { student_early_end_reason: early_end_reason.trim() }
         : {}),
     })

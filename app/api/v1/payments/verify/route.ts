@@ -76,7 +76,11 @@ export async function POST(req: NextRequest) {
     })
     .eq("id", application_id);
 
-  const student = application.users as { email: string; full_name: string };
+  const studentRaw = application.users;
+  const student = (Array.isArray(studentRaw) ? studentRaw[0] : studentRaw) as {
+    email: string;
+    full_name: string;
+  };
   await sendEmail({
     to: student.email,
     subject: "Payment confirmed — your Orcred application is being reviewed",

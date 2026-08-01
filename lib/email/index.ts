@@ -276,8 +276,8 @@ function renderTemplate(template: EmailTemplate, data: Record<string, unknown>):
 
     waitlist_admin_notify: base(`
       <div style="background: #eb4511; border-radius: 4px; padding: 28px 28px 24px; margin-bottom: 32px;">
-        <p style="font-size: 11px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: rgba(255,255,255,0.7); margin: 0 0 8px;">Waitlist signup</p>
-        <p style="font-size: 24px; font-weight: 700; color: #ffffff; margin: 0; line-height: 1.3;">${data.full_name}</p>
+        <p style="font-size: 11px; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: rgba(255,255,255,0.7); margin: 0 0 8px;">New waitlist signup</p>
+        <p style="font-size: 24px; font-weight: 700; color: #ffffff; margin: 0; line-height: 1.3;">${data.full_name} just signed up</p>
       </div>
       <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin: 0 0 24px;">
         <tr><td style="padding: 8px 0; color: rgba(15,13,12,0.5); width: 140px;">Email</td><td style="padding: 8px 0;">${data.email}</td></tr>

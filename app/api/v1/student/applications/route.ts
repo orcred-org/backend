@@ -3,6 +3,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { getSessionWithRole, allowsRole } from "@/lib/auth/session";
 import { applicationByUser } from "@/lib/ratelimit";
 import { submitApplicationSchema } from "@/lib/validators/student";
+import { isStudentApplyEnabled } from "@/lib/platformGates";
 
 function normaliseUrl(value: string): string {
   const trimmed = value.trim();
@@ -49,6 +50,13 @@ export async function POST(req: NextRequest) {
   const session = await getSessionWithRole(req);
   if (!session) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
   if (!allowsRole(session, "student")) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+
+  if (!isStudentApplyEnabled()) {
+    return NextResponse.json(
+      { success: false, error: "Applications are not open yet. Join the waitlist instead." },
+      { status: 403 },
+    );
+  }
 
   // Rate limit — 3 applications per 60 days
   const { success: rateLimitOk } = await applicationByUser.limit(session.id);

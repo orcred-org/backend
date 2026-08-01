@@ -4,7 +4,13 @@ import { Redis } from "@upstash/redis";
 type Limiter = Pick<Ratelimit, "limit">;
 
 const noopLimiter: Limiter = {
-  limit: async () => ({ success: true, limit: 0, remaining: 999, reset: Date.now() }),
+  limit: async () => ({
+    success: true,
+    limit: 0,
+    remaining: 999,
+    reset: Date.now(),
+    pending: Promise.resolve(),
+  }),
 };
 
 function createLimiter(

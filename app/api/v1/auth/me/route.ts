@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@/lib/supabase/server";
-import { createClient as createSupabaseClient } from "@supabase/supabase-js";
+import { createClient, createServiceClient } from "@/lib/supabase/server";
 
 export async function GET(req: NextRequest) {
   try {
@@ -9,12 +8,9 @@ export async function GET(req: NextRequest) {
     const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
     let userId: string | null = null;
+    const adminClient = createServiceClient();
 
     if (bearerToken) {
-      const adminClient = createSupabaseClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.SUPABASE_SERVICE_ROLE_KEY!
-      );
       const { data, error } = await adminClient.auth.getUser(bearerToken);
       if (!error && data.user) userId = data.user.id;
     } else {
@@ -27,11 +23,6 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Not authenticated" }, { status: 401 });
     }
 
-    // Get user profile from database
-    const adminClient = createSupabaseClient(
-      process.env.NEXT_PUBLIC_SUPABASE_URL!,
-      process.env.SUPABASE_SERVICE_ROLE_KEY!
-    );
     const { data: userData, error: dbError } = await adminClient
       .from("users")
       .select("id, email, account_type, full_name")
@@ -45,6 +36,13 @@ export async function GET(req: NextRequest) {
     return NextResponse.json(userData);
   } catch (error) {
     console.error("Auth me error:", error);
+    const message = error instanceof Error ? error.message : "Internal server error";
+    if (message.includes("missing Supabase config")) {
+      return NextResponse.json(
+        { error: "Server misconfigured: SUPABASE_SERVICE_ROLE_KEY is not set on the backend" },
+        { status: 503 },
+      );
+    }
     return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }

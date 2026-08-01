@@ -88,10 +88,7 @@ export async function GET(
   }
 
   if (user.account_type === "student") {
-    const [{ data: applications }, { data: ideas }, { data: credentials }] = await Promise.all([
-      supabase
-        .from("applications")
-        .select(`
+    const appsSelectModern = `
           id, project_name, tech_stack, status, submitted_at, payment_at, utr_number,
           github_url, loom_url, build_decision_1, build_decision_2, build_decision_3,
           what_broke, ai_tools_used, availability, recording_consent,
@@ -106,9 +103,39 @@ export async function GET(
             session_date, status,
             reviewers:reviewer_id (full_name, email)
           )
-        `)
+        `;
+    const appsSelectLegacy = appsSelectModern
+      .replace(/problem_solving/g, "originality")
+      .replace(/feedback_ps/g, "feedback_orig");
+
+    const modernRes = await supabase
+      .from("applications")
+      .select(appsSelectModern)
+      .eq("user_id", id)
+      .order("submitted_at", { ascending: false });
+
+    let applicationsData: unknown[] | null = modernRes.data as unknown[] | null;
+    if (
+      modernRes.error
+      && isMissingColumnError(modernRes.error.message)
+      && (modernRes.error.message.includes("problem_solving") || modernRes.error.message.includes("feedback_ps"))
+    ) {
+      const legacyRes = await supabase
+        .from("applications")
+        .select(appsSelectLegacy)
         .eq("user_id", id)
-        .order("submitted_at", { ascending: false }),
+        .order("submitted_at", { ascending: false });
+      applicationsData = legacyRes.data as unknown[] | null;
+      if (legacyRes.error) {
+        console.error("[admin/users]", id, legacyRes.error.message);
+        return corsJson(req, { success: false, error: "Failed to fetch applications" }, 500);
+      }
+    } else if (modernRes.error) {
+      console.error("[admin/users]", id, modernRes.error.message);
+      return corsJson(req, { success: false, error: "Failed to fetch applications" }, 500);
+    }
+
+    const [{ data: ideas }, { data: credentials }] = await Promise.all([
       supabase
         .from("project_ideas")
         .select("id, project_name, tech_stack, description, is_active, generated_at")
@@ -125,7 +152,7 @@ export async function GET(
       success: true,
       data: {
         user,
-        applications: applications ?? [],
+        applications: applicationsData ?? [],
         project_ideas: ideas ?? [],
         credentials: credentials ?? [],
       },

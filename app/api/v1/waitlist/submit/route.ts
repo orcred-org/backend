@@ -4,7 +4,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 
 import { magicLinkByEmail, magicLinkByIp } from "@/lib/ratelimit";
 
-import { sendWaitlistSignupEmails } from "@/lib/email/sendWaitlistSignupEmails";
+import { sendWaitlistConfirmationEmail, sendWaitlistAdminNotify } from "@/lib/email/sendWaitlistSignupEmails";
 
 import { waitlistSubmitSchema } from "@/lib/validators/waitlist";
 
@@ -167,9 +167,7 @@ export async function POST(req: NextRequest) {
 
 
     try {
-
-      await sendWaitlistSignupEmails({ id: existing.id, ...emailPayload, updated: true });
-
+      await sendWaitlistConfirmationEmail({ id: existing.id, ...emailPayload, updated: true });
     } catch (err) {
 
       console.error("[waitlist/submit] confirmation email failed:", (err as Error).message);
@@ -224,16 +222,41 @@ export async function POST(req: NextRequest) {
 
     console.error("[waitlist/submit] insert error:", insertError.message);
 
+    if (insertError.message.includes("waitlist_entries") && insertError.message.includes("schema cache")) {
+
+      return NextResponse.json(
+
+        {
+
+          success: false,
+
+          error: "Waitlist is not set up on this database yet. Run backend/supabase/apply-waitlist-idempotent.sql in Supabase SQL Editor.",
+
+        },
+
+        { status: 503 },
+
+      );
+
+    }
+
     return NextResponse.json({ success: false, error: "Could not save signup" }, { status: 500 });
 
   }
 
 
 
+  const signupPayload = { id: row.id, ...emailPayload };
+
   try {
+    await sendWaitlistAdminNotify(signupPayload);
+  } catch (err) {
+    console.error("[waitlist/submit] admin notify failed:", (err as Error).message);
+    // Signup is saved — do not fail the request if admin inbox delivery fails.
+  }
 
-    await sendWaitlistSignupEmails({ id: row.id, ...emailPayload });
-
+  try {
+    await sendWaitlistConfirmationEmail(signupPayload);
   } catch (err) {
 
     console.error("[waitlist/submit] confirmation email failed:", (err as Error).message);

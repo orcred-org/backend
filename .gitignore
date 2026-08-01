@@ -34,6 +34,9 @@ yarn-error.log*
 .env
 .env.local
 .env.*.local
+.env.local.docker-supabase
+env.local.template
+env.live.template
 
 # vercel
 .vercel

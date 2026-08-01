@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { magicLinkByEmail, magicLinkByIp } from "@/lib/ratelimit";
+import { isAdminOnlyAuth } from "@/lib/platformGates";
 import { z } from "zod";
 
 const schema = z.object({
@@ -9,6 +10,13 @@ const schema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  if (isAdminOnlyAuth()) {
+    return NextResponse.json(
+      { success: false, error: "Student sign-up is not open yet. Join the waitlist instead." },
+      { status: 403 },
+    );
+  }
+
   const ip = req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "unknown";
 
   const { success: ipOk } = await magicLinkByIp.limit(ip);

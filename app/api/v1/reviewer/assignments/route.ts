@@ -37,11 +37,13 @@ export async function GET(req: NextRequest) {
     .order("assigned_at", { ascending: false });
 
   if (error && isMissingWorkflowColumn(error.message)) {
-    ({ data, error } = await supabase
+    const fallbackResult = await supabase
       .from("reviewer_assignments")
       .select(baseSelect)
       .eq("reviewer_id", session.id)
-      .order("assigned_at", { ascending: false }));
+      .order("assigned_at", { ascending: false });
+    data = fallbackResult.data as typeof data;
+    error = fallbackResult.error;
   }
 
   if (error) {

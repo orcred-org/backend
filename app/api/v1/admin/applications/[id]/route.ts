@@ -3,6 +3,71 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { getSessionWithRole, isAllowedAdminIp, allowsRole } from "@/lib/auth/session";
 import { corsJson } from "@/lib/cors";
 import { enrichAssignmentWorkflow } from "@/lib/workflow";
+import { isMissingSchemaError, SCORES_CORE, SCORES_RUBRIC_LEGACY, SCORES_RUBRIC_MODERN } from "@/lib/db/schemaFallback";
+
+function scoresBlock(rubric: string | null, extra = ""): string {
+  const core = `${SCORES_CORE}${extra ? `, ${extra}` : ""}`;
+  if (!rubric) return `scores (${core})`;
+  return `scores (${core}, ${rubric})`;
+}
+
+function buildApplicationSelect(opts: {
+  workflow: boolean;
+  rubric: "modern" | "legacy" | null;
+  includeTasks: boolean;
+}): string {
+  const rubricStr =
+    opts.rubric === "modern"
+      ? SCORES_RUBRIC_MODERN
+      : opts.rubric === "legacy"
+        ? SCORES_RUBRIC_LEGACY
+        : null;
+  const scoreExtra = opts.workflow ? "admin_review_status, submitted_at" : "";
+  const scores = scoresBlock(rubricStr, scoreExtra);
+
+  const assignmentBase = `
+        id, session_date, status,
+        reviewers:reviewer_id (full_name, email)`;
+  const assignmentWorkflow = `
+        id, session_date, status, workflow_stage, proposed_session_at, proposed_session_notes, student_code,
+        session_proposal_submitted_at, admin_session_reminder_count, accepted_at, session_completed_at,
+        student_session_confirmed_at, student_feedback_audio, student_feedback_video, student_feedback_notes,
+        reviewer_joined_at, student_joined_at, reviewer_early_end_reason, student_early_end_reason,
+        reviewers:reviewer_id (id, full_name, email)`;
+  const tasks = `,
+        reviewer_tasks (
+          id, task_key, title, status, notes, completed_at, sort_order, unlocked, is_custom
+        )`;
+
+  let assignments = opts.workflow ? assignmentWorkflow : assignmentBase;
+  if (opts.workflow && opts.includeTasks) assignments += tasks;
+
+  return `
+      id, project_name, tech_stack, status, submitted_at, payment_at, utr_number,
+      github_url, loom_url, build_decision_1, build_decision_2, build_decision_3,
+      what_broke, ai_tools_used, recording_url,
+      users:user_id (id, full_name, email),
+      ${scores},
+      credentials (id, credential_id, credential_url, issued_at),
+      reviewer_assignments (${assignments}
+      )
+    `;
+}
+
+function normalizeLegacyScoreFields(app: Record<string, unknown>): void {
+  const raw = app.scores;
+  const list = Array.isArray(raw) ? raw : raw ? [raw] : [];
+  for (const row of list) {
+    if (!row || typeof row !== "object") continue;
+    const s = row as Record<string, unknown>;
+    if (s.problem_solving == null && s.originality != null) {
+      s.problem_solving = s.originality;
+    }
+    if (s.feedback_ps == null && s.feedback_orig != null) {
+      s.feedback_ps = s.feedback_orig;
+    }
+  }
+}
 
 export async function GET(
   req: NextRequest,
@@ -21,56 +86,25 @@ export async function GET(
   const { id } = await params;
   const supabase = createServiceClient();
 
-  const baseSelect = `
-      id, project_name, tech_stack, status, submitted_at, payment_at, utr_number,
-      github_url, loom_url, build_decision_1, build_decision_2, build_decision_3,
-      what_broke, ai_tools_used, recording_url,
-      users:user_id (id, full_name, email),
-      scores (
-        id, total_score, final_score, passed,
-        technical_depth, communication, reproducibility, problem_solving,
-        feedback_td, feedback_comm, feedback_repro, feedback_ps
-      ),
-      credentials (id, credential_id, credential_url, issued_at),
-      reviewer_assignments (
-        id, session_date, status,
-        reviewers:reviewer_id (full_name, email)
-      )
-    `;
+  const selects = [
+    buildApplicationSelect({ workflow: true, rubric: "modern", includeTasks: true }),
+    buildApplicationSelect({ workflow: true, rubric: "modern", includeTasks: false }),
+    buildApplicationSelect({ workflow: false, rubric: "modern", includeTasks: false }),
+    buildApplicationSelect({ workflow: true, rubric: null, includeTasks: false }),
+    buildApplicationSelect({ workflow: false, rubric: null, includeTasks: false }),
+    buildApplicationSelect({ workflow: true, rubric: "legacy", includeTasks: false }),
+    buildApplicationSelect({ workflow: false, rubric: "legacy", includeTasks: false }),
+  ];
 
-  const workflowSelect = `
-      id, project_name, tech_stack, status, submitted_at, payment_at, utr_number,
-      github_url, loom_url, build_decision_1, build_decision_2, build_decision_3,
-      what_broke, ai_tools_used, recording_url,
-      users:user_id (id, full_name, email),
-      scores (
-        id, total_score, final_score, passed, admin_review_status,
-        technical_depth, communication, reproducibility, problem_solving,
-        feedback_td, feedback_comm, feedback_repro, feedback_ps,
-        submitted_at
-      ),
-      credentials (id, credential_id, credential_url, issued_at),
-      reviewer_assignments (
-        id, session_date, status, workflow_stage, proposed_session_at, proposed_session_notes, student_code,
-        session_proposal_submitted_at, admin_session_reminder_count, accepted_at, session_completed_at,
-        student_session_confirmed_at, student_feedback_audio, student_feedback_video, student_feedback_notes,
-        reviewer_joined_at, student_joined_at, reviewer_early_end_reason, student_early_end_reason,
-        reviewers:reviewer_id (id, full_name, email),
-        reviewer_tasks (
-          id, task_key, title, status, notes, completed_at, sort_order, unlocked, is_custom
-        )
-      )
-    `;
+  let data = null;
+  let error: { message: string } | null = null;
 
-  let { data, error } = await supabase.from("applications").select(workflowSelect).eq("id", id).single();
-
-  if (error?.message?.includes("workflow_stage") || error?.message?.includes("does not exist") || error?.message?.includes("reviewer_tasks")) {
-    const partialSelect = workflowSelect.replace(/,\s*reviewer_tasks \([^)]+\)/, "");
-    ({ data, error } = await supabase.from("applications").select(partialSelect).eq("id", id).single());
-  }
-
-  if (error?.message?.includes("workflow_stage") || error?.message?.includes("does not exist")) {
-    ({ data, error } = await supabase.from("applications").select(baseSelect).eq("id", id).single());
+  for (const select of selects) {
+    const result = await supabase.from("applications").select(select).eq("id", id).single();
+    data = result.data;
+    error = result.error;
+    if (!error) break;
+    if (!isMissingSchemaError(error.message)) break;
   }
 
   if (error || !data) {
@@ -78,20 +112,29 @@ export async function GET(
     return corsJson(req, { success: false, error: error?.message || "Application not found" }, 404);
   }
 
-  const assignmentRaw = Array.isArray(data.reviewer_assignments)
-    ? data.reviewer_assignments[0]
-    : data.reviewer_assignments;
+  const app = data as unknown as {
+    id: string;
+    status: string;
+    reviewer_assignments?: unknown;
+  };
+
+  const assignmentRaw = Array.isArray(app.reviewer_assignments)
+    ? app.reviewer_assignments[0]
+    : app.reviewer_assignments;
 
   if (assignmentRaw) {
-    const reviewers = assignmentRaw.reviewers as { id?: string } | { id?: string }[] | null;
+    const row = assignmentRaw as Record<string, unknown> & { reviewers?: { id?: string } | { id?: string }[] | null };
+    const reviewers = row.reviewers;
     const reviewer = Array.isArray(reviewers) ? reviewers[0] : reviewers;
     enrichAssignmentWorkflow(
-      assignmentRaw as Record<string, unknown>,
-      data.id,
-      data.status,
+      row,
+      app.id,
+      app.status,
       reviewer?.id,
     );
   }
 
-  return corsJson(req, { success: true, data });
+  normalizeLegacyScoreFields(app as unknown as Record<string, unknown>);
+
+  return corsJson(req, { success: true, data: app });
 }

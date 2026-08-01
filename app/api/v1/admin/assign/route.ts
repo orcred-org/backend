@@ -129,7 +129,11 @@ export async function POST(req: NextRequest) {
     .eq("id", reviewer_id)
     .single();
 
-  const student = application.users as { email: string; full_name: string };
+  const studentRaw = application.users;
+  const student = (Array.isArray(studentRaw) ? studentRaw[0] : studentRaw) as {
+    email: string;
+    full_name: string;
+  };
 
   if (reviewer) {
     await sendEmail({

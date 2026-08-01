@@ -16,8 +16,9 @@ export function isDevFullAccess(email: string | undefined | null): boolean {
 export function allowsRole(
   session: { email: string; role: UserRole } | null,
   required: UserRole,
-): session is { email: string; role: UserRole } {
+): boolean {
   if (!session) return false;
   if (isDevFullAccess(session.email)) return true;
+  if (session.role === "admin") return true;
   return session.role === required;
 }

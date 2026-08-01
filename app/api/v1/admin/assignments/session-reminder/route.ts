@@ -74,7 +74,7 @@ export async function POST(req: NextRequest) {
     return corsJson(req, { success: false, error: "Assignment not found" }, 404);
   }
 
-  const row = assignment as {
+  const row = assignment as unknown as {
     id: string;
     application_id: string;
     workflow_stage?: string;

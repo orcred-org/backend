@@ -1,7 +1,8 @@
 import { sendEmail } from "@/lib/email";
 import { firstName } from "@/lib/email/waitlistPersonalize";
+import { notifyAdmins } from "@/lib/email/adminNotify";
 
-interface WaitlistSignupPayload {
+export interface WaitlistSignupPayload {
   id: string;
   full_name: string;
   email: string;
@@ -16,7 +17,24 @@ function appUrl(): string {
   return (process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000").replace(/\/$/, "");
 }
 
-export async function sendWaitlistSignupEmails(payload: WaitlistSignupPayload): Promise<void> {
+/** Notify admins that someone new joined the waitlist (every new DB row). */
+export async function sendWaitlistAdminNotify(payload: WaitlistSignupPayload): Promise<void> {
+  await notifyAdmins({
+    subject: `${payload.full_name} just signed up for the Orcred waitlist`,
+    template: "waitlist_admin_notify",
+    data: {
+      full_name: payload.full_name,
+      email: payload.email,
+      domain: payload.domain,
+      degree: payload.degree,
+      referral_source: payload.referral_source,
+      motivation: payload.motivation,
+      admin_url: `${appUrl()}/dashboard/admin`,
+    },
+  });
+}
+
+export async function sendWaitlistConfirmationEmail(payload: WaitlistSignupPayload): Promise<void> {
   const fn = firstName(payload.full_name);
   const subjectSuffix = payload.updated ? " (updated)" : "";
 
@@ -30,22 +48,13 @@ export async function sendWaitlistSignupEmails(payload: WaitlistSignupPayload): 
       degree: payload.degree,
     },
   });
+}
 
-  const adminEmail = process.env.ADMIN_NOTIFY_EMAIL;
-  if (!adminEmail) return;
+/** Student confirmation + admin notify on brand-new signups only. */
+export async function sendWaitlistSignupEmails(payload: WaitlistSignupPayload): Promise<void> {
+  await sendWaitlistConfirmationEmail(payload);
 
-  await sendEmail({
-    to: adminEmail,
-    subject: `Waitlist signup${subjectSuffix}: ${payload.full_name} (${payload.domain})`,
-    template: "waitlist_admin_notify",
-    data: {
-      full_name: payload.full_name,
-      email: payload.email,
-      domain: payload.domain,
-      degree: payload.degree,
-      referral_source: payload.referral_source,
-      motivation: payload.motivation,
-      admin_url: `${appUrl()}/dashboard/admin`,
-    },
-  });
+  if (!payload.updated) {
+    await sendWaitlistAdminNotify(payload);
+  }
 }

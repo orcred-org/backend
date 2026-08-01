@@ -34,3 +34,9 @@ export const adminRescheduleSessionSchema = z.object({
   new_session_at: z.string().datetime(),
   note: z.string().max(500).optional(),
 });
+
+export const adminRequestRescheduleSchema = z.object({
+  assignment_id: z.string().uuid(),
+  reason: z.string().min(5).max(500),
+  preferred_session_at: z.string().datetime().optional(),
+});

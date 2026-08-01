@@ -160,7 +160,7 @@ export async function issueCredential(
       totalScore = score?.final_score ?? score?.total_score ?? 0;
     }
     try {
-      await sendPassEmail(userId, applicationId, issued, totalScore);
+      await sendPassEmail(userId, applicationId, issued, totalScore ?? 0);
     } catch {
       /* email failure must not roll back credential */
     }

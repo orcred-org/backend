@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/server";
+import { isAdminOnlyAuth } from "@/lib/platformGates";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
@@ -48,7 +49,27 @@ export async function GET(req: NextRequest) {
     .eq("id", data.user!.id)
     .maybeSingle();
 
+  if (!profile && data.user.email) {
+    ({ data: profile } = await supabase
+      .from("users")
+      .select("account_type")
+      .ilike("email", data.user.email)
+      .maybeSingle());
+
+    if (profile) {
+      console.warn(
+        "[callback] public.users id does not match auth user for",
+        data.user.email,
+        "— set users.id to the Authentication UUID",
+      );
+    }
+  }
+
   if (!profile) {
+    if (isAdminOnlyAuth()) {
+      return NextResponse.redirect(`${appUrl}/dashboard/auth?error=admin_only`);
+    }
+
     const { data: created, error: insertErr } = await supabase
       .from("users")
       .insert({
@@ -60,7 +81,6 @@ export async function GET(req: NextRequest) {
       .single();
 
     if (insertErr?.code === "23505") {
-      // Row exists for this id (race) — re-fetch
       ({ data: profile } = await supabase
         .from("users")
         .select("account_type")
@@ -71,10 +91,16 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const callbackUrl = new URL(`${appUrl}/dashboard/auth/callback`);
-  callbackUrl.searchParams.set("access_token", data.session.access_token);
-  callbackUrl.searchParams.set("refresh_token", data.session.refresh_token);
-  callbackUrl.searchParams.set("account_type", profile?.account_type ?? "");
+  if (isAdminOnlyAuth() && profile?.account_type !== "admin") {
+    return NextResponse.redirect(`${appUrl}/dashboard/auth?error=admin_only`);
+  }
 
-  return NextResponse.redirect(callbackUrl.toString());
+  // Tokens in URL hash — query strings with JWTs exceed server URL limits (404 on /callback).
+  const hash = new URLSearchParams({
+    access_token: data.session.access_token,
+    refresh_token: data.session.refresh_token,
+    account_type: profile?.account_type ?? "",
+  }).toString();
+
+  return NextResponse.redirect(`${appUrl}/dashboard/auth/callback#${hash}`);
 }

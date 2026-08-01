@@ -74,7 +74,10 @@ export async function GET(req: NextRequest) {
     if (search)   fallback = fallback.ilike("project_name", `%${search}%`);
     if (dateFrom) fallback = fallback.gte("submitted_at", dateFrom);
     if (dateTo)   fallback = fallback.lte("submitted_at", dateTo);
-    ({ data, error, count } = await fallback);
+    const fallbackResult = await fallback;
+    data = fallbackResult.data as typeof data;
+    error = fallbackResult.error;
+    count = fallbackResult.count;
   }
 
   if (error) {

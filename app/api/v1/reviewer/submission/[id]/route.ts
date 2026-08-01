@@ -49,7 +49,7 @@ export async function GET(
   }
 
   const appSelect = `
-    id, project_name, tech_stack, github_url, loom_url,
+    id, project_name, tech_stack, github_url, loom_url, status,
     build_decision_1, build_decision_2, build_decision_3,
     what_broke, ai_tools_used, submitted_at, availability, workflow_stage,
     users:user_id (full_name, email)
