@@ -34,7 +34,10 @@ export function applyCorsHeaders(res: NextResponse, origin: string) {
   if (!isAllowedOrigin(origin)) return res;
   res.headers.set("Access-Control-Allow-Origin", origin);
   res.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-  res.headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, Cookie");
+  res.headers.set(
+    "Access-Control-Allow-Headers",
+    "Content-Type, Authorization, Cookie, x-vercel-protection-bypass, x-vercel-set-bypass-cookie",
+  );
   res.headers.set("Access-Control-Allow-Credentials", "true");
   return res;
 }
