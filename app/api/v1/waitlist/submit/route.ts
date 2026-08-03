@@ -117,75 +117,12 @@ export async function POST(req: NextRequest) {
 
 
   if (existing) {
+    const message =
+      existing.status === "converted"
+        ? "This email has already joined Orcred."
+        : "You're already registered on the waitlist with this email.";
 
-    if (existing.status === "converted") {
-
-      return NextResponse.json(
-
-        { success: false, error: "This email has already joined Orcred." },
-
-        { status: 409 },
-
-      );
-
-    }
-
-
-
-    const { error: updateError } = await supabase
-
-      .from("waitlist_entries")
-
-      .update({
-
-        full_name:       emailPayload.full_name,
-
-        domain:          emailPayload.domain,
-
-        degree:          emailPayload.degree,
-
-        referral_source: emailPayload.referral_source,
-
-        motivation:      emailPayload.motivation,
-
-        updated_at: new Date().toISOString(),
-
-      })
-
-      .eq("id", existing.id);
-
-
-
-    if (updateError) {
-
-      console.error("[waitlist/submit] update error:", updateError.message);
-
-      return NextResponse.json({ success: false, error: "Could not save signup" }, { status: 500 });
-
-    }
-
-
-
-    try {
-      await sendWaitlistConfirmationEmail({ id: existing.id, ...emailPayload, updated: true });
-    } catch (err) {
-
-      console.error("[waitlist/submit] confirmation email failed:", (err as Error).message);
-
-      return NextResponse.json(
-
-        { success: false, error: "Saved your signup but confirmation email failed. Please try again or contact us." },
-
-        { status: 502 },
-
-      );
-
-    }
-
-
-
-    return NextResponse.json({ success: true, data: { id: existing.id, updated: true } });
-
+    return NextResponse.json({ success: false, error: message }, { status: 409 });
   }
 
 
@@ -219,8 +156,14 @@ export async function POST(req: NextRequest) {
 
 
   if (insertError) {
-
     console.error("[waitlist/submit] insert error:", insertError.message);
+
+    if (insertError.code === "23505") {
+      return NextResponse.json(
+        { success: false, error: "You're already registered on the waitlist with this email." },
+        { status: 409 },
+      );
+    }
 
     if (insertError.message.includes("waitlist_entries") && insertError.message.includes("schema cache")) {
 
