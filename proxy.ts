@@ -3,6 +3,36 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { applyCorsHeaders, corsJson } from "@/lib/cors";
 
+const PRODUCTION_ORIGINS = [
+  "https://dashboard.orcred.com",
+  "https://orcred.com",
+  "https://www.orcred.com",
+];
+
+const LOCAL_ORIGINS = [
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+];
+
+function isAllowedOrigin(origin: string): boolean {
+  if (!origin) return false;
+  if (PRODUCTION_ORIGINS.includes(origin) || LOCAL_ORIGINS.includes(origin)) {
+    return true;
+  }
+  // Any localhost port in non-production (e.g. alternate dev ports)
+  if (process.env.NODE_ENV !== "production") {
+    return /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin);
+  }
+  return false;
+}
+
+function applyCorsHeaders(headers: Headers, origin: string): void {
+  headers.set("Access-Control-Allow-Origin", origin);
+  headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+  headers.set("Access-Control-Allow-Headers", "Content-Type, Authorization, Cookie");
+  headers.set("Access-Control-Allow-Credentials", "true");
+}
+
 export async function proxy(req: NextRequest) {
   const origin = req.headers.get("origin") ?? "";
   const { pathname } = req.nextUrl;

@@ -38,6 +38,10 @@ yarn-error.log*
 env.local.template
 env.live.template
 
+# supabase local cli
+supabase/.temp/
+supabase/.branches/
+
 # vercel
 .vercel
 
