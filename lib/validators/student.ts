@@ -8,9 +8,10 @@ export const updateProfileSchema = z.object({
 });
 
 export const availabilitySlotSchema = z.object({
-  date:     z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  time:     z.string().regex(/^\d{2}:\d{2}$/),
-  timezone: z.string().min(1),
+  date:        z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  time:        z.string().regex(/^\d{2}:\d{2}$/),
+  timezone:    z.string().min(1),
+  description: z.string().optional(),
 });
 
 export const submitApplicationSchema = z.object({
@@ -31,4 +32,10 @@ export const submitApplicationSchema = z.object({
 export const paymentSubmitSchema = z.object({
   application_id: z.string().uuid(),
   utr_number:     z.string().min(6).max(50),
+});
+
+export const requestRescheduleSchema = z.object({
+  application_id: z.string().uuid(),
+  reason: z.string().min(10).max(1000),
+  preferred_session_at: z.string().datetime().optional(),
 });

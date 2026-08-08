@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { getSessionWithRole } from "@/lib/auth/session";
+import { getSessionWithRole, allowsRole } from "@/lib/auth/session";
 import { saveIdeaSchema } from "@/lib/validators/generator";
 
 export async function POST(req: NextRequest) {
   const session = await getSessionWithRole();
   if (!session) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "student") return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  if (!allowsRole(session, "student")) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   let body: unknown;
   try { body = await req.json(); }

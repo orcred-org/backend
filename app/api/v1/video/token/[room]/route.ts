@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { getSessionWithRole } from "@/lib/auth/session";
+import { getSessionWithRole, allowsRole } from "@/lib/auth/session";
 import { createToken } from "@/lib/video";
+import { getSessionJoinState } from "@/lib/video/session-access";
+import { isDevFullAccess } from "@/lib/auth/devAccess";
 
 export async function GET(
   _req: NextRequest,
-  { params }: { params: Promise<{ room: string }> }
+  { params }: { params: Promise<{ room: string }> },
 ) {
   const session = await getSessionWithRole();
   if (!session) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
@@ -13,7 +15,6 @@ export async function GET(
   const { room } = await params;
   const supabase = createServiceClient();
 
-  // Find assignment for this room
   const { data: assignment } = await supabase
     .from("reviewer_assignments")
     .select("id, reviewer_id, session_date, application_id, applications:application_id (user_id)")
@@ -24,28 +25,26 @@ export async function GET(
     return NextResponse.json({ success: false, error: "Room not found" }, { status: 404 });
   }
 
-  const app = assignment.applications as any;
-  const isReviewer = session.role === "reviewer" && session.id === assignment.reviewer_id;
-  const isStudent  = session.role === "student"  && session.id === app.user_id;
+  const app = assignment.applications as { user_id: string } | { user_id: string }[] | null;
+  const userId = Array.isArray(app) ? app[0]?.user_id : app?.user_id;
+
+  const isReviewer =
+    session.id === assignment.reviewer_id
+    && (allowsRole(session, "reviewer") || isDevFullAccess(session.email));
+  const isStudent =
+    session.id === userId
+    && (allowsRole(session, "student") || isDevFullAccess(session.email));
 
   if (!isReviewer && !isStudent) {
     return NextResponse.json({ success: false, error: "Not authorised for this room" }, { status: 403 });
   }
 
-  // Token only available 15 minutes before session
-  const sessionTime = new Date(assignment.session_date);
-  const now = new Date();
-  const minutesUntil = (sessionTime.getTime() - now.getTime()) / 60000;
-
-  if (minutesUntil > 15) {
-    return NextResponse.json(
-      { success: false, error: "Session link activates 15 minutes before start" },
-      { status: 403 }
-    );
+  const joinState = getSessionJoinState(assignment.session_date);
+  if (!joinState.canJoin) {
+    return NextResponse.json({ success: false, error: joinState.message }, { status: 403 });
   }
 
-  // Reviewer gets host token, student gets participant token
-  const { token } = await createToken(room, isReviewer, assignment.session_date);
+  const { token } = await createToken(room, isReviewer, assignment.session_date!);
 
   return NextResponse.json({ success: true, data: { token } });
 }

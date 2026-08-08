@@ -1,15 +1,19 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { getSessionWithRole, isAllowedAdminIp } from "@/lib/auth/session";
+import { getSessionWithRole, isAllowedAdminIp, allowsRole } from "@/lib/auth/session";
+import { corsJson } from "@/lib/cors";
 
 export async function GET(req: NextRequest) {
   if (!isAllowedAdminIp(req)) {
-    return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+    return corsJson(req, { success: false, error: "Forbidden" }, 403);
   }
 
-  const session = await getSessionWithRole();
-  if (!session || session.role !== "admin") {
-    return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  const session = await getSessionWithRole(req);
+  if (!session) {
+    return corsJson(req, { success: false, error: "Unauthorized" }, 401);
+  }
+  if (!allowsRole(session, "admin")) {
+    return corsJson(req, { success: false, error: "Admin access required" }, 403);
   }
 
   const supabase = createServiceClient();
@@ -26,6 +30,9 @@ export async function GET(req: NextRequest) {
     linkedinAdded,
     paymentsAll,
     paymentsThisMonth,
+    waitlistAll,
+    waitlistPending,
+    waitlistThisMonth,
   ] = await Promise.all([
     supabase.from("applications").select("id", { count: "exact" }),
     supabase.from("applications").select("id", { count: "exact" }).gte("submitted_at", startOfMonth),
@@ -35,6 +42,9 @@ export async function GET(req: NextRequest) {
     supabase.from("credentials").select("id", { count: "exact" }).eq("linkedin_added", true),
     supabase.from("applications").select("payment_amount").not("payment_at", "is", null),
     supabase.from("applications").select("payment_amount").not("payment_at", "is", null).gte("payment_at", startOfMonth),
+    supabase.from("waitlist_entries").select("id", { count: "exact", head: true }),
+    supabase.from("waitlist_entries").select("id", { count: "exact", head: true }).eq("status", "pending"),
+    supabase.from("waitlist_entries").select("id", { count: "exact", head: true }).gte("created_at", startOfMonth),
   ]);
 
   const allScores = scoresAll.data ?? [];
@@ -54,7 +64,7 @@ export async function GET(req: NextRequest) {
   const revenueAll = (paymentsAll.data ?? []).reduce((sum, r) => sum + (r.payment_amount ?? 0), 0);
   const revenueThisMonth = (paymentsThisMonth.data ?? []).reduce((sum, r) => sum + (r.payment_amount ?? 0), 0);
 
-  return NextResponse.json({
+  return corsJson(req, {
     success: true,
     data: {
       applications: {
@@ -73,6 +83,11 @@ export async function GET(req: NextRequest) {
       revenue: {
         all_time:   revenueAll,
         this_month: revenueThisMonth,
+      },
+      waitlist: {
+        total:      waitlistAll.count ?? 0,
+        pending:    waitlistPending.count ?? 0,
+        this_month: waitlistThisMonth.count ?? 0,
       },
     },
   });

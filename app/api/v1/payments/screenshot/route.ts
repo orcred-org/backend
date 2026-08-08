@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { getSessionWithRole } from "@/lib/auth/session";
+import { getSessionWithRole, allowsRole } from "@/lib/auth/session";
 
 const ALLOWED_TYPES = ["image/jpeg", "image/png", "image/webp"];
 const MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
@@ -8,7 +8,7 @@ const MAX_SIZE_BYTES = 5 * 1024 * 1024; // 5MB
 export async function POST(req: NextRequest) {
   const session = await getSessionWithRole();
   if (!session) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "student") return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  if (!allowsRole(session, "student")) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   const formData = await req.formData();
   const file = formData.get("file") as File | null;

@@ -1,14 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient, createServiceClient } from "@/lib/supabase/server";
-import { getSessionWithRole } from "@/lib/auth/session";
+import { createServiceClient } from "@/lib/supabase/server";
+import { getSessionWithRole, allowsRole } from "@/lib/auth/session";
 import { submitScoreSchema } from "@/lib/validators/reviewer";
-import { issueCredential } from "@/lib/credentials";
 import { sendEmail } from "@/lib/email";
+import { completeTask, setAssignmentStage } from "@/lib/workflow";
+import { computeWeightedTotal, ratingTo100, excludedKeys } from "@/lib/scoring";
+import type { CriterionKey } from "@/lib/scoring";
+import { requiresEarlyEndReason } from "@/lib/session/audit";
+
+function dimScore(key: CriterionKey, ratings: ReturnType<typeof submitScoreSchema.parse>["ratings"]): number {
+  const r = ratings[key];
+  return r.excluded ? 0 : ratingTo100(r.value);
+}
 
 export async function POST(req: NextRequest) {
-  const session = await getSessionWithRole();
+  const session = await getSessionWithRole(req);
   if (!session) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "reviewer") return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  if (!allowsRole(session, "reviewer")) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   let body: unknown;
   try { body = await req.json(); }
@@ -19,14 +27,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: parsed.error.flatten() }, { status: 422 });
   }
 
-  const { application_id, technical_depth, communication, reproducibility, originality, ...rest } = parsed.data;
-
+  const { application_id, ratings, feedback_notes } = parsed.data;
   const supabase = createServiceClient();
 
-  // Verify assignment belongs to this reviewer and session has passed
   const { data: assignment } = await supabase
     .from("reviewer_assignments")
-    .select("id, session_date, status")
+    .select("id, session_date, session_completed_at, workflow_stage, reviewer_early_end_reason")
     .eq("application_id", application_id)
     .eq("reviewer_id", session.id)
     .single();
@@ -35,14 +41,43 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: "Assignment not found" }, { status: 404 });
   }
 
-  if (new Date() <= new Date(assignment.session_date)) {
+  if (!assignment.session_completed_at && assignment.workflow_stage !== "session_done") {
     return NextResponse.json(
-      { success: false, error: "Cannot submit scores before the session has taken place" },
+      { success: false, error: "Mark the session as done before submitting scores" },
       { status: 422 }
     );
   }
 
-  // Check scores not already submitted
+  const earlyEndReason = typeof body === "object" && body && "early_end_reason" in body
+    ? String((body as { early_end_reason?: string }).early_end_reason ?? "").trim()
+    : "";
+
+  const needsEarlyReason =
+    !!assignment.session_date
+    && !!assignment.session_completed_at
+    && requiresEarlyEndReason(assignment.session_date, assignment.session_completed_at);
+
+  if (
+    needsEarlyReason
+    && !assignment.reviewer_early_end_reason
+    && earlyEndReason.length < 10
+  ) {
+    return NextResponse.json(
+      {
+        success: false,
+        error: "This session ended early. Explain why before submitting scores (min 10 characters).",
+      },
+      { status: 422 },
+    );
+  }
+
+  if (needsEarlyReason && earlyEndReason.length >= 10 && !assignment.reviewer_early_end_reason) {
+    await supabase
+      .from("reviewer_assignments")
+      .update({ reviewer_early_end_reason: earlyEndReason })
+      .eq("id", assignment.id);
+  }
+
   const { data: existing } = await supabase
     .from("scores")
     .select("id")
@@ -53,103 +88,77 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ success: false, error: "Scores already submitted and locked" }, { status: 409 });
   }
 
-  // Calculate total score server-side
-  const total_score = Math.round(
-    technical_depth * 0.35 +
-    communication   * 0.25 +
-    reproducibility * 0.20 +
-    originality     * 0.20
-  );
-
+  const total_score = computeWeightedTotal(ratings);
   const passed = total_score >= 60;
   const is_borderline = total_score >= 58 && total_score <= 62;
+  const excluded = excludedKeys(ratings);
 
-  const serviceClient = createServiceClient();
-
-  const { data: score, error } = await serviceClient
+  const { data: score, error } = await supabase
     .from("scores")
     .insert({
       application_id,
-      reviewer_id:    session.id,
-      technical_depth,
-      communication,
-      reproducibility,
-      originality,
+      reviewer_id:     session.id,
+      technical_depth: dimScore("technical_depth", ratings),
+      communication:   dimScore("communication", ratings),
+      reproducibility: dimScore("reproducibility", ratings),
+      problem_solving: dimScore("problem_solving", ratings),
       total_score,
-      final_score: total_score,
+      final_score:     total_score,
       passed,
       is_borderline,
-      feedback_td:   rest.feedback_td,
-      feedback_comm: rest.feedback_comm,
-      feedback_repro: rest.feedback_repro,
-      feedback_orig: rest.feedback_orig,
-      internal_notes: rest.internal_notes ?? null,
-      submitted_at:   new Date().toISOString(),
+      feedback_td:     feedback_notes,
+      feedback_comm:   feedback_notes,
+      feedback_repro:  feedback_notes,
+      feedback_ps:     feedback_notes,
+      internal_notes:  excluded.length
+        ? `Excluded criteria: ${excluded.join(", ")}`
+        : null,
+      submitted_at:    new Date().toISOString(),
+      admin_review_status: "pending",
     })
     .select("id, total_score, passed, is_borderline")
     .single();
 
   if (error) return NextResponse.json({ success: false, error: "Score submission failed" }, { status: 500 });
 
-  // Update application status
-  await serviceClient
+  await setAssignmentStage(supabase, assignment.id, "score_submitted", "scheduled");
+
+  const { data: scoreTask } = await supabase
+    .from("reviewer_tasks")
+    .select("id")
+    .eq("assignment_id", assignment.id)
+    .eq("task_key", "submit_score")
+    .single();
+
+  if (scoreTask) await completeTask(supabase, scoreTask.id, session.id);
+
+  const { data: appData } = await supabase
     .from("applications")
-    .update({ status: "completed" })
-    .eq("id", application_id);
+    .select("project_name")
+    .eq("id", application_id)
+    .single();
 
-  // Update assignment status
-  await serviceClient
-    .from("reviewer_assignments")
-    .update({ status: "completed" })
-    .eq("application_id", application_id)
-    .eq("reviewer_id", session.id);
-
-  // Issue credential if passed, send failure email if not
-  if (passed) {
-    await issueCredential(application_id, session.id);
-  } else {
-    // Get student details for failure email
-    const { data: appData } = await serviceClient
-      .from("applications")
-      .select("project_name, users:user_id (email, full_name)")
-      .eq("id", application_id)
-      .single();
-
-    const student = (appData?.users as any);
-    const resubDate = new Date();
-    resubDate.setDate(resubDate.getDate() + 60);
-
-    if (student) {
-      await sendEmail({
-        to:       student.email,
-        subject:  "Your Orcred review result",
-        template: "score_failed",
-        data: {
-          student_name:       student.full_name,
-          score:              total_score,
-          resubmission_date:  resubDate.toISOString().split("T")[0],
-        },
-      });
-    }
+  const { data: admin } = await supabase.from("users").select("email").eq("account_type", "admin").limit(1).maybeSingle();
+  if (admin) {
+    await sendEmail({
+      to: admin.email,
+      subject: `Score ready for review: ${appData?.project_name}`,
+      template: "score_pending_admin",
+      data: { application_id, score: total_score, passed, project_name: appData?.project_name },
+    });
   }
 
-  // Alert admin if borderline
-  if (is_borderline) {
-    const { data: admin } = await serviceClient
-      .from("users")
-      .select("email")
-      .eq("account_type", "admin")
-      .single();
-
-    if (admin) {
-      await sendEmail({
-        to:       admin.email,
-        subject:  `Borderline score — second review needed`,
-        template: "borderline_alert",
-        data: { application_id, score: total_score },
-      });
-    }
+  if (is_borderline && admin) {
+    await sendEmail({
+      to: admin.email,
+      subject: "Borderline score — second review needed",
+      template: "borderline_alert",
+      data: { application_id, score: total_score },
+    });
   }
 
-  return NextResponse.json({ success: true, data: score }, { status: 201 });
+  return NextResponse.json(
+    { success: true, data: { ...score, pending_admin_review: true } },
+    { status: 201 }
+  );
 }

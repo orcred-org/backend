@@ -1,30 +1,65 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { getSessionWithRole, isAllowedAdminIp } from "@/lib/auth/session";
+import { getSessionWithRole, isAllowedAdminIp, allowsRole } from "@/lib/auth/session";
+import { isMissingSchemaError } from "@/lib/db/schemaFallback";
+import { corsJson } from "@/lib/cors";
 
 export async function GET(req: NextRequest) {
   if (!isAllowedAdminIp(req)) {
-    return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+    return corsJson(req, { success: false, error: "Forbidden" }, 403);
   }
 
-  const session = await getSessionWithRole();
-  if (!session || session.role !== "admin") {
-    return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  const session = await getSessionWithRole(req);
+  if (!session) {
+    return corsJson(req, { success: false, error: "Unauthorized" }, 401);
+  }
+  if (!allowsRole(session, "admin")) {
+    return corsJson(req, { success: false, error: "Admin access required" }, 403);
   }
 
   const supabase = createServiceClient();
 
-  const { data: reviewers, error } = await supabase
+  const profileSelect =
+    "id, full_name, email, linkedin_url, created_at, account_type, reviewer_onboarding_complete";
+  const baseSelect = "id, full_name, email, linkedin_url, created_at, account_type";
+
+  const result = await supabase
     .from("users")
-    .select("id, full_name, email, linkedin_url, created_at")
-    .eq("account_type", "reviewer")
+    .select(profileSelect)
+    .in("account_type", ["reviewer", "admin"])
     .order("created_at", { ascending: false });
 
-  if (error) return NextResponse.json({ success: false, error: "Failed to fetch" }, { status: 500 });
+  let reviewers: typeof result.data = result.data;
+  let error = result.error;
+
+  if (error && isMissingSchemaError(error.message)) {
+    const fallback = await supabase
+      .from("users")
+      .select(baseSelect)
+      .in("account_type", ["reviewer", "admin"])
+      .order("created_at", { ascending: false });
+    reviewers = fallback.data as typeof result.data;
+    error = fallback.error;
+  }
+
+  // Admins only appear here once reviewer onboarding is complete (when column exists).
+  const filtered = (reviewers ?? []).filter((r) => {
+    if (r.account_type === "reviewer") return true;
+    if (r.account_type === "admin") {
+      const complete = (r as { reviewer_onboarding_complete?: boolean }).reviewer_onboarding_complete;
+      return complete === true;
+    }
+    return false;
+  });
+
+  if (error) {
+    console.error("[admin/reviewers]", error.message);
+    return corsJson(req, { success: false, error: "Failed to fetch" }, 500);
+  }
 
   // Enrich with session stats per reviewer
   const enriched = await Promise.all(
-    (reviewers ?? []).map(async (reviewer) => {
+    filtered.map(async (reviewer) => {
       const [assignmentsRes, scoresRes] = await Promise.all([
         supabase
           .from("reviewer_assignments")
@@ -56,5 +91,5 @@ export async function GET(req: NextRequest) {
     })
   );
 
-  return NextResponse.json({ success: true, data: enriched });
+  return corsJson(req, { success: true, data: enriched });
 }

@@ -35,6 +35,8 @@ yarn-error.log*
 .env.local
 .env.*.local
 .env.local.docker-supabase
+env.local.template
+env.live.template
 
 # supabase local cli
 supabase/.temp/

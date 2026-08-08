@@ -1,56 +1,41 @@
 import { Ratelimit } from "@upstash/ratelimit";
 import { Redis } from "@upstash/redis";
 
-const redis = new Redis({
-  url: process.env.UPSTASH_REDIS_URL!,
-  token: process.env.UPSTASH_REDIS_TOKEN!,
-});
+type Limiter = Pick<Ratelimit, "limit">;
 
-// 3 magic link requests per email per hour
-export const magicLinkByEmail = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(3, "1 h"),
-  prefix: "rl:magic:email",
-});
+const noopLimiter: Limiter = {
+  limit: async () => ({
+    success: true,
+    limit: 0,
+    remaining: 999,
+    reset: Date.now(),
+    pending: Promise.resolve(),
+  }),
+};
 
-// 3 magic link requests per IP per hour
-export const magicLinkByIp = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(3, "1 h"),
-  prefix: "rl:magic:ip",
-});
+function createLimiter(
+  prefix: string,
+  limit: number,
+  window: `${number} s` | `${number} m` | `${number} h` | `${number} d`,
+): Limiter {
+  // Skip rate limits in local dev — otherwise 3/hr blocks repeated login testing
+  if (process.env.NODE_ENV !== "production") return noopLimiter;
 
-// 10 generator requests per user per day
-export const generatorByUser = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(10, "1 d"),
-  prefix: "rl:gen:user",
-});
+  const url = process.env.UPSTASH_REDIS_URL;
+  const token = process.env.UPSTASH_REDIS_TOKEN;
+  if (!url || !token) return noopLimiter;
 
-// 100 generator requests per IP per day (public generator abuse prevention)
-export const generatorByIp = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(100, "1 d"),
-  prefix: "rl:gen:ip",
-});
+  return new Ratelimit({
+    redis: new Redis({ url, token }),
+    limiter: Ratelimit.slidingWindow(limit, window),
+    prefix,
+  });
+}
 
-// 3 applications per user per 60 days
-export const applicationByUser = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(3, "60 d"),
-  prefix: "rl:app:user",
-});
-
-// 100 credential verifications per IP per hour
-export const verifyByIp = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(100, "1 h"),
-  prefix: "rl:verify:ip",
-});
-
-// 200 admin requests per hour
-export const adminByIp = new Ratelimit({
-  redis,
-  limiter: Ratelimit.slidingWindow(200, "1 h"),
-  prefix: "rl:admin:ip",
-});
+export const magicLinkByEmail = createLimiter("rl:magic:email", 3, "1 h");
+export const magicLinkByIp = createLimiter("rl:magic:ip", 3, "1 h");
+export const generatorByUser = createLimiter("rl:gen:user", 10, "1 d");
+export const generatorByIp = createLimiter("rl:gen:ip", 100, "1 d");
+export const applicationByUser = createLimiter("rl:app:user", 3, "60 d");
+export const verifyByIp = createLimiter("rl:verify:ip", 100, "1 h");
+export const adminByIp = createLimiter("rl:admin:ip", 200, "1 h");

@@ -32,9 +32,16 @@ export async function createClient() {
 
 // Service role client — server-side only, never expose to frontend
 export function createServiceClient() {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (!url || !key) {
+    throw new Error(
+      "Backend missing Supabase config. Set NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in backend/.env.local"
+    );
+  }
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+    url,
+    key,
     {
       cookies: { getAll: () => [], setAll: () => {} },
     }

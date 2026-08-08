@@ -1,26 +1,31 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { getSessionWithRole, isAllowedAdminIp } from "@/lib/auth/session";
+import { getSessionWithRole, isAllowedAdminIp, allowsRole } from "@/lib/auth/session";
 import { confirmPaymentSchema } from "@/lib/validators/admin";
 import { sendEmail } from "@/lib/email";
+import { corsJson } from "@/lib/cors";
 
 export async function POST(req: NextRequest) {
   if (!isAllowedAdminIp(req)) {
-    return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+    return corsJson(req, { success: false, error: "Forbidden" }, 403);
   }
 
-  const session = await getSessionWithRole();
-  if (!session || session.role !== "admin") {
-    return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  const session = await getSessionWithRole(req);
+  if (!session) return corsJson(req, { success: false, error: "Unauthorized" }, 401);
+  if (!allowsRole(session, "admin")) {
+    return corsJson(req, { success: false, error: "Admin access required" }, 403);
   }
 
   let body: unknown;
-  try { body = await req.json(); }
-  catch { return NextResponse.json({ success: false, error: "Invalid request" }, { status: 400 }); }
+  try {
+    body = await req.json();
+  } catch {
+    return corsJson(req, { success: false, error: "Invalid request" }, 400);
+  }
 
   const parsed = confirmPaymentSchema.safeParse(body);
   if (!parsed.success) {
-    return NextResponse.json({ success: false, error: parsed.error.flatten() }, { status: 422 });
+    return corsJson(req, { success: false, error: parsed.error.flatten() }, 422);
   }
 
   const { application_id } = parsed.data;
@@ -33,14 +38,14 @@ export async function POST(req: NextRequest) {
     .single();
 
   if (!application) {
-    return NextResponse.json({ success: false, error: "Application not found" }, { status: 404 });
+    return corsJson(req, { success: false, error: "Application not found" }, 404);
   }
 
-  if (application.status !== "payment_pending") {
-    return NextResponse.json(
-      { success: false, error: "Application is not awaiting payment confirmation" },
-      { status: 422 }
-    );
+  if (!["submitted", "payment_pending"].includes(application.status)) {
+    return corsJson(req, {
+      success: false,
+      error: `Cannot confirm payment from status: ${application.status}`,
+    }, 422);
   }
 
   await supabase
@@ -51,7 +56,11 @@ export async function POST(req: NextRequest) {
     })
     .eq("id", application_id);
 
-  const student = application.users as any;
+  const studentRaw = application.users;
+  const student = (Array.isArray(studentRaw) ? studentRaw[0] : studentRaw) as {
+    email: string;
+    full_name: string;
+  };
 
   await sendEmail({
     to:      student.email,
@@ -63,5 +72,5 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return NextResponse.json({ success: true });
+  return corsJson(req, { success: true });
 }

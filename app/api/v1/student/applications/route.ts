@@ -1,13 +1,28 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { getSessionWithRole } from "@/lib/auth/session";
+import { getSessionWithRole, allowsRole } from "@/lib/auth/session";
 import { applicationByUser } from "@/lib/ratelimit";
 import { submitApplicationSchema } from "@/lib/validators/student";
+import { isStudentApplyEnabled } from "@/lib/platformGates";
 
-export async function GET() {
-  const session = await getSessionWithRole();
+function normaliseUrl(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) return trimmed;
+  return trimmed.startsWith("http") ? trimmed : `https://${trimmed}`;
+}
+
+function normaliseApplicationBody(body: Record<string, unknown>) {
+  return {
+    ...body,
+    github_url: typeof body.github_url === "string" ? normaliseUrl(body.github_url) : body.github_url,
+    loom_url: typeof body.loom_url === "string" ? normaliseUrl(body.loom_url) : body.loom_url,
+  };
+}
+
+export async function GET(req: NextRequest) {
+  const session = await getSessionWithRole(req);
   if (!session) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "student") return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  if (!allowsRole(session, "student")) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
 
   const supabase = createServiceClient();
   const { data, error } = await supabase
@@ -20,7 +35,7 @@ export async function GET() {
       ),
       scores (
         total_score, final_score, passed, technical_depth, communication,
-        reproducibility, originality, feedback_td, feedback_comm, feedback_repro, feedback_orig
+        reproducibility, problem_solving, feedback_td, feedback_comm, feedback_repro, feedback_ps
       )
     `)
     .eq("user_id", session.id)
@@ -32,9 +47,16 @@ export async function GET() {
 }
 
 export async function POST(req: NextRequest) {
-  const session = await getSessionWithRole();
+  const session = await getSessionWithRole(req);
   if (!session) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
-  if (session.role !== "student") return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+  if (!allowsRole(session, "student")) return NextResponse.json({ success: false, error: "Forbidden" }, { status: 403 });
+
+  if (!isStudentApplyEnabled()) {
+    return NextResponse.json(
+      { success: false, error: "Applications are not open yet. Join the waitlist instead." },
+      { status: 403 },
+    );
+  }
 
   // Rate limit — 3 applications per 60 days
   const { success: rateLimitOk } = await applicationByUser.limit(session.id);
@@ -79,9 +101,16 @@ export async function POST(req: NextRequest) {
   try { body = await req.json(); }
   catch { return NextResponse.json({ success: false, error: "Invalid request" }, { status: 400 }); }
 
-  const parsed = submitApplicationSchema.safeParse(body);
+  const parsed = submitApplicationSchema.safeParse(
+    typeof body === "object" && body !== null
+      ? normaliseApplicationBody(body as Record<string, unknown>)
+      : body,
+  );
   if (!parsed.success) {
-    return NextResponse.json({ success: false, error: parsed.error.flatten() }, { status: 422 });
+    return NextResponse.json(
+      { success: false, error: "Validation failed", details: parsed.error.flatten() },
+      { status: 422 },
+    );
   }
 
   const { data, error } = await supabase

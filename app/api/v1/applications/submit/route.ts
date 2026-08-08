@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
 import { magicLinkByEmail, magicLinkByIp } from "@/lib/ratelimit";
-import { sendEmail } from "@/lib/email";
 import { sendMagicLink } from "@/lib/email/sendMagicLink";
+import { notifyAdmins } from "@/lib/email/adminNotify";
 import { z } from "zod";
 
 const schema = z.object({
@@ -145,28 +145,22 @@ export async function POST(req: NextRequest) {
         console.error("[applications/submit] student magic link error:", err)
       );
 
-      const adminEmail = process.env.ADMIN_NOTIFY_EMAIL;
-      if (adminEmail) {
-        try {
-          await sendEmail({
-            to: adminEmail,
-            subject: `New application — ${d.name} (${d.project})`,
-            template: "new_application",
-            data: {
-              name:         d.name,
-              email:        d.email,
-              project:      d.project,
-              stack:        d.stack,
-              linkedin:     linkedinUrl,
-              loom:         loomUrl,
-              timezone:     d.timezone,
-              availability: d.availability,
-            },
-          });
-        } catch (err) {
-          console.error("[applications/submit] admin notify error:", err);
-        }
-      }
+      notifyAdmins({
+        subject: `New application — ${d.name} (${d.project})`,
+        template: "new_application",
+        data: {
+          name:         d.name,
+          email:        d.email,
+          project:      d.project,
+          stack:        d.stack,
+          linkedin:     linkedinUrl,
+          loom:         loomUrl,
+          timezone:     d.timezone,
+          availability: d.availability,
+        },
+      }).catch((err) => {
+        console.error("[applications/submit] admin notify error:", err);
+      });
     }
   }
 

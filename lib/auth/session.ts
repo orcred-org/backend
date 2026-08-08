@@ -4,10 +4,12 @@ import { UserRole } from "@/types";
 import { NextRequest, NextResponse } from "next/server";
 import { headers } from "next/headers";
 
-async function getUserFromRequest(): Promise<{ id: string; email: string } | null> {
-  // Try Bearer token first (frontend direct Supabase auth)
-  const headersList = await headers();
-  const authHeader = headersList.get("authorization");
+export { allowsRole, isDevFullAccess } from "./devAccess";
+
+async function getUserFromRequest(req?: NextRequest): Promise<{ id: string; email: string } | null> {
+  const authHeader =
+    req?.headers.get("authorization") ??
+    (await headers()).get("authorization");
   const bearerToken = authHeader?.startsWith("Bearer ") ? authHeader.slice(7) : null;
 
   if (bearerToken) {
@@ -28,12 +30,12 @@ async function getUserFromRequest(): Promise<{ id: string; email: string } | nul
   return { id: user.id, email: user.email! };
 }
 
-export async function getSession() {
-  return getUserFromRequest();
+export async function getSession(req?: NextRequest) {
+  return getUserFromRequest(req);
 }
 
-export async function getSessionWithRole(): Promise<{ id: string; email: string; role: UserRole } | null> {
-  const user = await getUserFromRequest();
+export async function getSessionWithRole(req?: NextRequest): Promise<{ id: string; email: string; role: UserRole } | null> {
+  const user = await getUserFromRequest(req);
   if (!user) return null;
 
   const adminClient = createSupabaseClient(
@@ -61,7 +63,7 @@ export function requireRole(allowedRoles: UserRole[]) {
     req: NextRequest,
     handler: (req: NextRequest, context: { userId: string; role: UserRole }) => Promise<NextResponse>
   ): Promise<NextResponse> {
-    const session = await getSessionWithRole();
+    const session = await getSessionWithRole(req);
 
     if (!session) {
       return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
@@ -75,10 +77,16 @@ export function requireRole(allowedRoles: UserRole[]) {
   };
 }
 
-// Admin IP allowlist check
+// Admin IP allowlist check — production only. Browser → localhost API has no
+// x-forwarded-for, so allowlist would block all local admin dashboard calls.
 export function isAllowedAdminIp(req: NextRequest): boolean {
-  const allowlist = (process.env.ADMIN_IP_ALLOWLIST || "").split(",").map(ip => ip.trim()).filter(Boolean);
-  if (allowlist.length === 0) return true; // dev mode — no restriction
+  if (process.env.NODE_ENV !== "production") return true;
+
+  const allowlist = (process.env.ADMIN_IP_ALLOWLIST || "")
+    .split(",")
+    .map((ip) => ip.trim())
+    .filter(Boolean);
+  if (allowlist.length === 0) return true;
 
   const ip =
     req.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||

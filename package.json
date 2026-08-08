@@ -6,7 +6,15 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:status": "supabase status",
+    "db:reset": "supabase db reset",
+    "db:env": "node scripts/sync-local-env.mjs",
+    "db:seed": "node scripts/seed-local-users.mjs",
+    "db:demo": "node scripts/grant-demo-access.mjs",
+    "db:bootstrap": "supabase start && supabase db reset && node scripts/sync-local-env.mjs && node scripts/seed-local-users.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",
@@ -28,6 +36,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.2.7",
+    "supabase": "^2.109.1",
     "tailwindcss": "^4",
     "typescript": "^5"
   }
