@@ -3,6 +3,7 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { getSessionWithRole, allowsRole } from "@/lib/auth/session";
 import { reviewerSessionDraftSchema } from "@/lib/validators/session";
 import { isDevFullAccess } from "@/lib/auth/devAccess";
+import { isMissingWorkflowColumn } from "@/lib/workflow";
 
 export async function POST(req: NextRequest) {
   const session = await getSessionWithRole(req);
@@ -38,8 +39,12 @@ export async function POST(req: NextRequest) {
   const { error } = await updateQuery;
 
   if (error) {
+    if (isMissingWorkflowColumn(error.message)) {
+      // Hosted DB may not have migration 011 yet — don't spam 500s on auto-save.
+      return NextResponse.json({ success: true, persisted: false });
+    }
     return NextResponse.json({ success: false, error: "Could not save draft" }, { status: 500 });
   }
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, persisted: true });
 }

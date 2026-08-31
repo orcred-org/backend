@@ -137,8 +137,14 @@ export function isMissingWorkflowColumn(message?: string): boolean {
   if (!message) return false;
   return (
     message.includes("does not exist") ||
+    message.includes("Could not find") ||
     message.includes("reviewer_tasks") ||
     message.includes("workflow_stage") ||
+    message.includes("reviewer_session_notes") ||
+    message.includes("reviewer_session_draft") ||
+    message.includes("student_session_notes") ||
+    message.includes("session_completed_at") ||
+    message.includes("reviewer_joined_at") ||
     message.includes("student_code") ||
     message.includes("admin_review_status") ||
     message.includes("schema cache")

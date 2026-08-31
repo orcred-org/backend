@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase/server";
-import { getSessionWithRole, allowsRole } from "@/lib/auth/session";
+import { getSessionWithRole } from "@/lib/auth/session";
 import { createToken } from "@/lib/video";
 import { ensureAssignmentDailyRoom } from "@/lib/video/ensure-room";
 import { getSessionJoinState, getSessionTimerState } from "@/lib/video/session-access";
 import { buildSessionJoinAudit } from "@/lib/session/audit";
 import { participantRoleError, resolveParticipantRole } from "@/lib/session/participant-role";
+import { fetchSessionAssignment } from "@/lib/session/fetch-assignment";
 
 export async function GET(
   req: NextRequest,
@@ -19,30 +20,19 @@ export async function GET(
   const { assignmentId } = await params;
   const requestedAs = req.nextUrl.searchParams.get("as");
   const roleHint =
-    requestedAs === "reviewer" || requestedAs === "student" ? requestedAs : null;
+    requestedAs === "reviewer" || requestedAs === "student" || requestedAs === "admin"
+      ? requestedAs
+      : null;
 
   const supabase = createServiceClient();
 
-  const { data: assignment } = await supabase
-    .from("reviewer_assignments")
-    .select(`
-      id, reviewer_id, application_id, session_date, daily_room_name, daily_room_url, status,
-      workflow_stage, session_completed_at, student_session_confirmed_at,
-      student_feedback_audio, student_feedback_video, student_feedback_notes,
-      reviewer_session_draft, reviewer_session_notes, student_session_notes,
-      reviewer_joined_at, student_joined_at,
-      reviewer_early_end_reason, student_early_end_reason,
-      applications:application_id (
-        id, project_name, user_id, tech_stack, github_url, loom_url,
-        build_decision_1, build_decision_2, build_decision_3, what_broke, ai_tools_used,
-        submitted_at, recording_url
-      )
-    `)
-    .eq("id", assignmentId)
-    .single();
+  const { data: assignment, error: fetchError } = await fetchSessionAssignment(supabase, assignmentId);
 
-  if (!assignment) {
-    return NextResponse.json({ success: false, error: "Session not found" }, { status: 404 });
+  if (fetchError || !assignment) {
+    return NextResponse.json(
+      { success: false, error: fetchError ?? "Session not found" },
+      { status: fetchError === "Session not found" ? 404 : 500 },
+    );
   }
 
   const app = Array.isArray(assignment.applications)
@@ -65,7 +55,7 @@ export async function GET(
 
   const { data: scoreRow } = await supabase
     .from("scores")
-    .select("id, total_score, passed, admin_review_status, submitted_at")
+    .select("id, total_score, passed, submitted_at")
     .eq("application_id", assignment.application_id)
     .maybeSingle();
 
@@ -80,6 +70,7 @@ export async function GET(
     studentJoinedAt: assignment.student_joined_at,
   });
   const joinState = getSessionJoinState(assignment.session_date, { sessionDone });
+  const adminObserver = participantRole === "admin";
   const canJoinVideo =
     joinState.canJoin && !sessionDone && !timer.timeExpired && sessionScheduled;
 
@@ -116,12 +107,18 @@ export async function GET(
   if (canJoinVideo && dailyRoomName && process.env.DAILY_API_KEY && assignment.session_date) {
     try {
       const isHost = participantRole === "reviewer";
-      const displayName = isHost ? "Reviewer" : "Student";
+      const displayName =
+        participantRole === "admin"
+          ? "Orcred Admin"
+          : isHost
+            ? "Reviewer"
+            : "Student";
       const { token: meetingToken } = await createToken(
         dailyRoomName,
         isHost,
         assignment.session_date,
         displayName,
+        { observer: participantRole === "admin" },
       );
       token = meetingToken;
     } catch (err) {
@@ -133,7 +130,9 @@ export async function GET(
   const participantNotes =
     participantRole === "reviewer"
       ? assignment.reviewer_session_notes ?? null
-      : assignment.student_session_notes ?? null;
+      : participantRole === "student"
+        ? assignment.student_session_notes ?? null
+        : null;
 
   return NextResponse.json({
     success: true,
@@ -145,6 +144,7 @@ export async function GET(
       daily_room_url: dailyRoomUrl,
       role: participantRole,
       is_host: participantRole === "reviewer",
+      is_observer: adminObserver,
       join_window_open: joinState.canJoin && !sessionDone && !timer.timeExpired,
       session_scheduled: sessionScheduled,
       session_done: sessionDone,
@@ -159,7 +159,7 @@ export async function GET(
           }
         : null,
       score_submitted: !!scoreRow,
-      score_pending_admin: scoreRow?.admin_review_status === "pending" || !scoreRow?.admin_review_status,
+      score_pending_admin: !!scoreRow && !(scoreRow as { admin_review_status?: string }).admin_review_status,
       can_join: canJoinVideo && !!token && !!dailyRoomUrl,
       join_message: joinState.message,
       opens_at: joinState.opensAt ?? null,

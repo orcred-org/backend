@@ -3,6 +3,8 @@ import { createServiceClient } from "@/lib/supabase/server";
 import { getSessionWithRole } from "@/lib/auth/session";
 import { sessionNotesSchema } from "@/lib/validators/session";
 import { participantRoleError, resolveParticipantRole } from "@/lib/session/participant-role";
+import { fetchSessionAssignment } from "@/lib/session/fetch-assignment";
+import { isMissingWorkflowColumn } from "@/lib/workflow";
 
 export async function POST(req: NextRequest) {
   const session = await getSessionWithRole(req);
@@ -27,14 +29,13 @@ export async function POST(req: NextRequest) {
   const supabase = createServiceClient();
   const { assignment_id, notes } = parsed.data;
 
-  const { data: assignment } = await supabase
-    .from("reviewer_assignments")
-    .select("id, reviewer_id, session_completed_at, workflow_stage, applications:application_id (user_id)")
-    .eq("id", assignment_id)
-    .single();
+  const { data: assignment, error: fetchError } = await fetchSessionAssignment(supabase, assignment_id);
 
-  if (!assignment) {
-    return NextResponse.json({ success: false, error: "Assignment not found" }, { status: 404 });
+  if (fetchError || !assignment) {
+    return NextResponse.json(
+      { success: false, error: fetchError === "Session not found" ? "Assignment not found" : "Could not load session" },
+      { status: fetchError === "Session not found" ? 404 : 500 },
+    );
   }
 
   const app = Array.isArray(assignment.applications)
@@ -48,9 +49,12 @@ export async function POST(req: NextRequest) {
     roleHint,
   );
 
-  if (!notesRole) {
+  if (!notesRole || notesRole === "admin") {
     return NextResponse.json(
-      { success: false, error: participantRoleError(roleHint) },
+      {
+        success: false,
+        error: notesRole === "admin" ? "Admins cannot edit session notes." : participantRoleError(roleHint),
+      },
       { status: 403 },
     );
   }
@@ -75,8 +79,11 @@ export async function POST(req: NextRequest) {
     .eq("id", assignment_id);
 
   if (error) {
+    if (isMissingWorkflowColumn(error.message)) {
+      return NextResponse.json({ success: true, persisted: false });
+    }
     return NextResponse.json({ success: false, error: "Could not save notes" }, { status: 500 });
   }
 
-  return NextResponse.json({ success: true });
+  return NextResponse.json({ success: true, persisted: true });
 }

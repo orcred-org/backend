@@ -27,9 +27,10 @@ export async function GET() {
       .from("applications")
       .select(`
         id, project_name, tech_stack, status, submitted_at, payment_at, payment_amount,
-        utr_number,
+        utr_number, recording_url,
         reviewer_assignments (
-          id, session_date, status, daily_room_url, workflow_stage, proposed_session_at, proposed_session_notes
+          id, session_date, status, daily_room_url, workflow_stage, proposed_session_at, proposed_session_notes,
+          session_completed_at
         ),
         scores (
           total_score, final_score, technical_depth, communication, reproducibility, problem_solving, passed,

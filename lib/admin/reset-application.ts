@@ -1,7 +1,27 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createServiceClient } from "@/lib/supabase/server";
+import { isMissingWorkflowColumn } from "@/lib/workflow";
 
 export type ResetStep = "payment" | "assignment" | "score" | "credential" | "full";
+
+async function updateApplication(
+  supabase: SupabaseClient,
+  applicationId: string,
+  payload: Record<string, unknown>,
+): Promise<{ error: { message: string } | null }> {
+  const { error } = await supabase.from("applications").update(payload).eq("id", applicationId);
+
+  if (error && isMissingWorkflowColumn(error.message) && "workflow_stage" in payload) {
+    const { workflow_stage: _omit, ...rest } = payload;
+    if (Object.keys(rest).length === 0) {
+      return { error: null };
+    }
+    const retry = await supabase.from("applications").update(rest).eq("id", applicationId);
+    return { error: retry.error };
+  }
+
+  return { error };
+}
 
 async function deleteCredentialChain(supabase: SupabaseClient, applicationId: string) {
   const { data: cred } = await supabase
@@ -59,23 +79,20 @@ export async function resetApplicationStep(applicationId: string, step: ResetSte
       return { ok: false as const, status: 500, error: assignDel.error.message };
     }
 
-    await supabase.from("applications").update({ workflow_stage: null }).eq("id", applicationId);
+    await updateApplication(supabase, applicationId, { workflow_stage: null });
     undone.push("assignment");
   }
 
   if (step === "full" || step === "payment") {
-    const { error } = await supabase
-      .from("applications")
-      .update({
-        status: "submitted",
-        payment_at: null,
-        utr_number: null,
-        payment_screenshot_url: null,
-        recording_url: null,
-        recording_delete_at: null,
-        workflow_stage: null,
-      })
-      .eq("id", applicationId);
+    const { error } = await updateApplication(supabase, applicationId, {
+      status: "submitted",
+      payment_at: null,
+      utr_number: null,
+      payment_screenshot_url: null,
+      recording_url: null,
+      recording_delete_at: null,
+      workflow_stage: null,
+    });
 
     if (error) {
       console.error("[admin/reset] payment:", error.message);

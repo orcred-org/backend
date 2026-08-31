@@ -39,3 +39,5 @@ export const generatorByIp = createLimiter("rl:gen:ip", 100, "1 d");
 export const applicationByUser = createLimiter("rl:app:user", 3, "60 d");
 export const verifyByIp = createLimiter("rl:verify:ip", 100, "1 h");
 export const adminByIp = createLimiter("rl:admin:ip", 200, "1 h");
+export const sessionAgentByUser = createLimiter("rl:session-agent:user", 40, "1 h");
+export const accountEmailChangeByUser = createLimiter("rl:account-email:user", 3, "1 h");

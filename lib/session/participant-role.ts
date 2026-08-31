@@ -1,6 +1,6 @@
 import { isDevFullAccess } from "@/lib/auth/devAccess";
 
-export type ParticipantRole = "reviewer" | "student";
+export type ParticipantRole = "reviewer" | "student" | "admin";
 
 /**
  * Resolve live-session participant role.
@@ -15,7 +15,13 @@ export function resolveParticipantRole(
 ): ParticipantRole | null {
   const isReviewer = session.id === assignment.reviewer_id;
   const isStudent = !!appUserId && session.id === appUserId;
+  const isAdmin = session.role === "admin";
   const dev = isDevFullAccess(session.email);
+
+  if (requestedAs === "admin") {
+    if (isAdmin) return "admin";
+    return null;
+  }
 
   if (requestedAs === "reviewer") {
     if (isReviewer || dev) return "reviewer";
@@ -46,8 +52,11 @@ export function resolveParticipantRole(
 }
 
 export function participantRoleError(requestedAs: ParticipantRole | null): string {
+  if (requestedAs === "admin") {
+    return "Admin access required to observe this session.";
+  }
   if (requestedAs) {
     return `You cannot join this session as ${requestedAs}.`;
   }
-  return "Add ?as=reviewer or ?as=student to the URL (required when testing with one account).";
+  return "Add ?as=reviewer, ?as=student, or ?as=admin to the URL.";
 }
