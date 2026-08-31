@@ -281,6 +281,7 @@ function renderTemplate(template: EmailTemplate, data: Record<string, unknown>):
       </div>
       <table style="width: 100%; border-collapse: collapse; font-size: 14px; margin: 0 0 24px;">
         <tr><td style="padding: 8px 0; color: rgba(15,13,12,0.5); width: 140px;">Email</td><td style="padding: 8px 0;">${data.email}</td></tr>
+        <tr><td style="padding: 8px 0; color: rgba(15,13,12,0.5);">Phone</td><td style="padding: 8px 0;">${data.phone ?? "—"}</td></tr>
         <tr><td style="padding: 8px 0; color: rgba(15,13,12,0.5);">Domains</td><td style="padding: 8px 0;"><strong>${data.domain}</strong></td></tr>
         <tr><td style="padding: 8px 0; color: rgba(15,13,12,0.5);">Degree</td><td style="padding: 8px 0;">${data.degree}</td></tr>
         <tr><td style="padding: 8px 0; color: rgba(15,13,12,0.5);">Found us via</td><td style="padding: 8px 0;">${data.referral_source ?? "—"}</td></tr>

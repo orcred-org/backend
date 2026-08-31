@@ -37,5 +37,11 @@ ALTER TABLE waitlist_entries
 ALTER TABLE waitlist_entries
   ADD COLUMN IF NOT EXISTS referral_source TEXT;
 
+ALTER TABLE waitlist_entries
+  ADD COLUMN IF NOT EXISTS phone TEXT;
+
 CREATE INDEX IF NOT EXISTS idx_waitlist_last_emailed_at
   ON waitlist_entries (last_emailed_at DESC NULLS LAST);
+
+-- Reload PostgREST schema cache so new columns are visible to the API immediately
+NOTIFY pgrst, 'reload schema';

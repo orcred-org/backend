@@ -6,6 +6,7 @@ export interface WaitlistSignupPayload {
   id: string;
   full_name: string;
   email: string;
+  phone: string;
   domain: string;
   degree: string;
   referral_source: string;
@@ -25,6 +26,7 @@ export async function sendWaitlistAdminNotify(payload: WaitlistSignupPayload): P
     data: {
       full_name: payload.full_name,
       email: payload.email,
+      phone: payload.phone,
       domain: payload.domain,
       degree: payload.degree,
       referral_source: payload.referral_source,

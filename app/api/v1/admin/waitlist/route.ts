@@ -36,7 +36,7 @@ export async function GET(req: NextRequest) {
   if (status) query = query.eq("status", status);
   if (search) {
     query = query.or(
-      `full_name.ilike.%${search}%,email.ilike.%${search}%,domain.ilike.%${search}%`,
+      `full_name.ilike.%${search}%,email.ilike.%${search}%,domain.ilike.%${search}%,phone.ilike.%${search}%`,
     );
   }
 

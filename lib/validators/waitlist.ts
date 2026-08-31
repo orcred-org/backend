@@ -13,14 +13,45 @@ const referralSources = [
   "Other",
 ] as const;
 
+/** Normalize to E.164-ish storage (+91XXXXXXXXXX for 10-digit Indian mobiles). */
+export function normalizeWaitlistPhone(raw: string): string {
+  const trimmed = raw.trim();
+  const digits = trimmed.replace(/\D/g, "");
+
+  if (digits.length === 10 && /^[6-9]/.test(digits)) {
+    return `+91${digits}`;
+  }
+
+  if (trimmed.startsWith("+")) {
+    return `+${digits}`;
+  }
+
+  if (digits.length >= 11 && digits.length <= 15) {
+    return `+${digits}`;
+  }
+
+  return trimmed;
+}
+
+function isValidPhone(raw: string): boolean {
+  const digits = raw.replace(/\D/g, "");
+  if (digits.length === 10 && /^[6-9]/.test(digits)) return true;
+  if (raw.trim().startsWith("+") && digits.length >= 11 && digits.length <= 15) return true;
+  return false;
+}
+
 export const waitlistSubmitSchema = z.object({
   full_name:       z.string().min(2).max(100),
   email:           z.string().email(),
+  phone:           z.string().trim().min(10).max(20).refine(isValidPhone, {
+    message: "Enter a valid mobile number (10-digit Indian or international with country code)",
+  }),
   domains:         z.array(domainTag).min(1).max(3),
   degree:          z.string().min(1).max(80),
   referral_source: z.enum(referralSources),
   motivation:      z.string().min(20).max(2000),
 });
+
 export const waitlistUpdateSchema = z.object({
   status:      z.enum(["pending", "invited", "converted", "rejected"]).optional(),
   admin_notes: z.string().max(2000).optional(),

@@ -14,7 +14,8 @@
     "db:env": "node scripts/sync-local-env.mjs",
     "db:seed": "node scripts/seed-local-users.mjs",
     "db:demo": "node scripts/grant-demo-access.mjs",
-    "db:bootstrap": "supabase start && supabase db reset && node scripts/sync-local-env.mjs && node scripts/seed-local-users.mjs"
+    "db:bootstrap": "supabase start && supabase db reset && node scripts/sync-local-env.mjs && node scripts/seed-local-users.mjs",
+    "db:apply-waitlist": "node scripts/apply-waitlist.mjs"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.100.1",

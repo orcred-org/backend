@@ -6,7 +6,7 @@ import { magicLinkByEmail, magicLinkByIp } from "@/lib/ratelimit";
 
 import { sendWaitlistConfirmationEmail, sendWaitlistAdminNotify } from "@/lib/email/sendWaitlistSignupEmails";
 
-import { waitlistSubmitSchema } from "@/lib/validators/waitlist";
+import { waitlistSubmitSchema, normalizeWaitlistPhone } from "@/lib/validators/waitlist";
 
 
 
@@ -67,8 +67,8 @@ export async function POST(req: NextRequest) {
   const d = parsed.data;
 
   const email = d.email.toLowerCase().trim();
-
   const domain = joinDomains(d.domains);
+  const phone = normalizeWaitlistPhone(d.phone);
 
 
 
@@ -104,6 +104,8 @@ export async function POST(req: NextRequest) {
 
     email,
 
+    phone,
+
     domain,
 
     degree: d.degree.trim(),
@@ -137,6 +139,8 @@ export async function POST(req: NextRequest) {
 
       full_name:       emailPayload.full_name,
 
+      phone:           emailPayload.phone,
+
       domain:          emailPayload.domain,
 
       degree:          emailPayload.degree,
@@ -165,7 +169,24 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (insertError.message.includes("waitlist_entries") && insertError.message.includes("schema cache")) {
+    if (insertError.message.includes("phone") && (
+      insertError.message.includes("does not exist") ||
+      insertError.message.includes("schema cache")
+    )) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: "Waitlist phone field is not set up yet. In Supabase SQL Editor run: ALTER TABLE waitlist_entries ADD COLUMN IF NOT EXISTS phone TEXT; then NOTIFY pgrst, 'reload schema';",
+        },
+        { status: 503 },
+      );
+    }
+
+    if (
+      insertError.message.includes("waitlist_entries") &&
+      insertError.message.includes("schema cache") &&
+      insertError.message.includes("Could not find the table")
+    ) {
 
       return NextResponse.json(
 
