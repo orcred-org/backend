@@ -52,9 +52,9 @@ export async function POST(req: NextRequest) {
     roleHint,
   );
 
-  if (!joinRole) {
+  if (!joinRole || joinRole === "admin") {
     return NextResponse.json(
-      { success: false, error: participantRoleError(roleHint) },
+      { success: false, error: joinRole === "admin" ? "Admins observe only — join is not recorded." : participantRoleError(roleHint) },
       { status: 403 },
     );
   }

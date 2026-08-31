@@ -41,7 +41,7 @@ export async function createRoom(sessionDate: string): Promise<DailyRoom> {
 
   const properties: Record<string, unknown> = {
     exp,
-    max_participants:   2,
+    max_participants:   4,
     enable_chat:        false,
     enable_screenshare: true,
     start_video_off:    true,
@@ -80,16 +80,18 @@ export async function createToken(
   isHost: boolean,
   sessionDate: string,
   userName?: string,
+  opts?: { observer?: boolean },
 ): Promise<DailyToken> {
   const exp = getDailyExpirationEpoch(sessionDate);
 
+  const observer = opts?.observer === true;
   const properties: Record<string, unknown> = {
     room_name:          roomName,
     is_owner:           isHost,
     exp,
-    enable_screenshare: true,
+    enable_screenshare: isHost && !observer,
     start_video_off:    true,
-    start_audio_off:    false,
+    start_audio_off:    observer,
   };
 
   if (!isHost) {

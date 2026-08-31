@@ -13,6 +13,8 @@
     "db:reset": "supabase db reset",
     "db:env": "node scripts/sync-local-env.mjs",
     "db:seed": "node scripts/seed-local-users.mjs",
+    "dev:sample-session": "node scripts/refresh-sample-session.mjs",
+    "smoke:api": "node scripts/smoke-api.mjs",
     "db:demo": "node scripts/grant-demo-access.mjs",
     "db:bootstrap": "supabase start && supabase db reset && node scripts/sync-local-env.mjs && node scripts/seed-local-users.mjs"
   },
@@ -24,6 +26,7 @@
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.38.0",
     "next": "16.2.7",
+    "openai": "^7.8.0",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "resend": "^6.12.4",

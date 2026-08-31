@@ -29,3 +29,20 @@ export const markSessionDoneSchema = z.object({
   assignment_id: z.string().uuid(),
   early_end_reason: earlyEndReasonSchema.optional(),
 });
+
+export const sessionAgentSuggestSchema = z.object({
+  assignment_id: z.string().uuid(),
+  mode: z.enum(["questions", "feedback_draft"]).default("questions"),
+  focus: z
+    .enum([
+      "opening",
+      "technical_depth",
+      "communication",
+      "reproducibility",
+      "problem_solving",
+      "follow_up",
+      "red_flags",
+    ])
+    .optional(),
+  session_notes: z.string().max(4000).optional(),
+});
